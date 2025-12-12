@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { handle } from 'hono/cloudflare-pages' // 引入 Pages 专用适配器
 import { setCookie, getCookie } from 'hono/cookie'
 
 interface Env {
@@ -10,6 +11,9 @@ const app = new Hono<{ Bindings: Env }>()
 
 // 1. 前台主页
 app.get('/', async (c) => {
+  // 错误保护：如果没有绑定 DB，防止页面直接崩溃，给个提示
+  if (!c.env.DB) return c.text('Database not bound (DB). Check Cloudflare Settings.', 500)
+
   const { results: links } = await c.env.DB.prepare('SELECT * FROM links ORDER BY created_at DESC').all()
   const bio = await c.env.DB.prepare("SELECT value FROM config WHERE key = 'bio'").first('value')
   const email = await c.env.DB.prepare("SELECT value FROM config WHERE key = 'email'").first('value')
@@ -31,26 +35,23 @@ app.get('/', async (c) => {
       </style>
     </head>
     <body class="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-x-hidden">
-      <!-- 背景装饰 -->
       <div class="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-orange-100 blur-3xl opacity-50 -z-10"></div>
       <div class="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-blue-100 blur-3xl opacity-50 -z-10"></div>
 
       <main class="w-full max-w-2xl animate-[fadeIn_0.5s_ease-out]">
-        <!-- 头部卡片 -->
         <div class="glass rounded-3xl p-8 mb-6 text-center shadow-sm">
            <div class="w-28 h-28 mx-auto mb-5 rounded-full p-1 bg-white shadow-sm overflow-hidden">
               <img src="/avatar" onerror="this.src='https://ui-avatars.com/api/?name=LX&background=000&color=fff'" class="w-full h-full rounded-full object-cover"/>
            </div>
            <h1 class="text-3xl font-bold mb-2 tracking-tight text-stone-800">Lx Profile</h1>
-           <p class="text-stone-500 mb-6 font-light leading-relaxed">${bio}</p>
+           <p class="text-stone-500 mb-6 font-light leading-relaxed">${bio || '暂无简介'}</p>
            <a href="mailto:${email}" class="inline-flex items-center px-6 py-2 bg-stone-900 text-white rounded-full text-sm hover:bg-stone-700 transition shadow-lg shadow-stone-200">
              联系我
            </a>
         </div>
 
-        <!-- 链接列表 -->
         <div class="space-y-3">
-          ${links.map((link: any) => `
+          ${links && links.length > 0 ? links.map((link: any) => `
             <a href="${link.url}" target="_blank" class="glass block p-4 rounded-xl flex items-center group btn-hover no-underline">
               <div class="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-xl shadow-sm text-stone-700 mr-4">
                 ${link.icon || '✦'}
@@ -61,7 +62,7 @@ app.get('/', async (c) => {
               </div>
               <div class="text-stone-300 group-hover:text-stone-500 transition">→</div>
             </a>
-          `).join('')}
+          `).join('') : '<div class="text-center text-stone-300 py-4">暂无链接，请登录后台添加</div>'}
         </div>
         
         <footer class="mt-12 text-center">
@@ -75,6 +76,7 @@ app.get('/', async (c) => {
 
 // 2. 头像图片代理 (R2)
 app.get('/avatar', async (c) => {
+  if (!c.env.BUCKET) return c.text('R2 Bucket not bound', 404)
   const object = await c.env.BUCKET.get('avatar.png')
   if (!object) return c.text('No Avatar', 404)
   const headers = new Headers()
@@ -85,6 +87,8 @@ app.get('/avatar', async (c) => {
 
 // 3. 后台管理 (Admin)
 app.get('/admin', async (c) => {
+  if (!c.env.DB) return c.text('Database Error', 500)
+  
   const cookie = getCookie(c, 'auth')
   const isLogged = cookie === 'true'
 
@@ -117,7 +121,7 @@ app.get('/admin', async (c) => {
         <div class="bg-white p-6 rounded-2xl shadow-sm mb-6">
           <h2 class="font-bold text-stone-700 mb-4">个人资料</h2>
           <form action="/api/config" method="post" class="space-y-4">
-             <textarea name="bio" class="w-full border p-3 rounded-lg bg-stone-50 text-stone-700 focus:outline-none focus:ring-2 focus:ring-stone-200" rows="3">${bio}</textarea>
+             <textarea name="bio" class="w-full border p-3 rounded-lg bg-stone-50 text-stone-700 focus:outline-none focus:ring-2 focus:ring-stone-200" rows="3">${bio || ''}</textarea>
              <div class="text-right"><button class="bg-stone-800 text-white px-4 py-2 rounded-lg text-sm">保存资料</button></div>
           </form>
         </div>
@@ -186,4 +190,5 @@ app.post('/api/links/delete', async (c) => {
   return c.redirect('/admin')
 })
 
-export const onRequest = app.fetch
+// 关键修改：使用 handle 包裹 app
+export const onRequest = handle(app)
