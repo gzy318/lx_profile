@@ -1,0 +1,13 @@
+{
+  "name": "lx-profile",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "echo 'No build step needed'"
+  },
+  "dependencies": {
+    "hono": "^4.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240208.0"
+  }
+}
