@@ -1,7 +1,8 @@
 /**
- * LX Profile - Final V4.0 (Dark Mode + Performance Edition)
- * 保留：天气、搜索、公告、QQ加好友、链接编辑、打字机、QR、复制、运行天数
- * 新增：暗黑模式切换、社交图标组、全年进度、动态问候、加载耗时、背景音乐
+ * LX Profile - V5.0 (Ultimate Refined)
+ * 修复：QQ图标、暗黑模式背景
+ * 优化：后台UI重构、性能缓存
+ * 新增：标签筛选、实时时钟、鼠标特效
  */
 import { Hono } from 'hono'
 import { handle } from 'hono/cloudflare-pages'
@@ -19,6 +20,7 @@ async function getConfig(db: D1Database, key: string) {
   return await db.prepare("SELECT value FROM config WHERE key = ?").bind(key).first('value')
 }
 
+// ------ 前台主页 ------
 app.get('/', async (c) => {
   const startTime = Date.now();
   if (!c.env.DB) return c.text('DB Bindings Missing', 500)
@@ -28,7 +30,7 @@ app.get('/', async (c) => {
   const lat = c.req.raw.cf?.latitude || '0'
   const lon = c.req.raw.cf?.longitude || '0'
   
-  // 2. 并发拉取数据库所有数据
+  // 2. 并发拉取数据库
   const [linksResult, bio, email, qq, views, bgUrl, siteTitle, status, startDate, notice, github, telegram, music] = await Promise.all([
     c.env.DB.prepare('SELECT * FROM links ORDER BY sort_order ASC, created_at DESC').all(),
     getConfig(c.env.DB, 'bio'),
@@ -45,11 +47,17 @@ app.get('/', async (c) => {
     getConfig(c.env.DB, 'music_url')
   ])
 
-  // 3. 统计逻辑
+  // 3. 统计逻辑 & 标签提取
   c.executionCtx.waitUntil(c.env.DB.prepare("UPDATE config SET value = CAST(value AS INTEGER) + 1 WHERE key = 'views'").run())
   const daysRunning = Math.floor((new Date().getTime() - new Date(startDate as string || '2025-01-01').getTime()) / 86400000)
+  
+  // 提取所有不重复的标签
+  const rawTags = linksResult.results.map((l:any) => l.tag || '默认').filter((v, i, a) => a.indexOf(v) === i && v !== '');
+  const tags = ['全部', ...rawTags];
 
-  // 4. 指定图标
+  // 4. 缓存策略 (SWR)
+  c.header('Cache-Control', 'public, max-age=60, stale-while-revalidate=600')
+
   const favicon = "https://twbk.cn/wp-content/uploads/2025/12/tx.png"
 
   return c.html(`
@@ -61,9 +69,11 @@ app.get('/', async (c) => {
       <title>${siteTitle || 'LX Profile'}</title>
       <link rel="icon" href="${favicon}">
       
-      <!-- 极速预加载 -->
+      <!-- 预加载 -->
+      <link rel="preconnect" href="https://cdn.tailwindcss.com">
+      
+      <!-- 暗黑模式防闪烁脚本 -->
       <script>
-        // 立即执行暗黑模式判断，防止闪屏
         if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
           document.documentElement.classList.add('dark');
         } else {
@@ -75,263 +85,272 @@ app.get('/', async (c) => {
       <script>
         tailwind.config = {
           darkMode: 'class',
-          theme: { extend: { colors: { darkbg: '#0f172a' } } }
+          theme: { extend: { colors: { darkbg: '#050505', glass: 'rgba(255,255,255,0.7)', darkglass: 'rgba(20,20,20,0.7)' } } }
         }
       </script>
-      
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Noto+Sans+SC:wght@500;700&display=swap" rel="stylesheet">
       
       <style>
-        body { font-family: 'Inter', 'Noto Sans SC', sans-serif; transition: background-color 0.5s ease; }
-        .glass { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.4); }
-        .dark .glass { background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.05); color: #e2e8f0; }
+        body { font-family: 'Inter', 'Noto Sans SC', sans-serif; }
         
-        .link-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-        .link-card:hover { transform: scale(1.02) translateY(-2px); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
-        
-        .dark .text-slate-800 { color: #f1f5f9; }
-        .dark .text-slate-500 { color: #94a3b8; }
-        
-        @keyframes marquee { 0% { transform: translateX(102%); } 100% { transform: translateX(-102%); } }
+        /* 优化的背景处理：使用 filter 而不是 overlay */
+        .bg-fixed-layer {
+            position: fixed; inset: 0; z-index: -10;
+            background-size: cover; background-position: center;
+            transition: filter 0.5s ease;
+        }
+        .dark .bg-fixed-layer {
+            filter: brightness(0.4) saturate(0.8) blur(0px); /* 暗黑模式：压暗+降饱和 */
+        }
+
+        /* 玻璃拟态 V5 */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            border: 1px solid rgba(255,255,255,0.6);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+        }
+        .dark .glass-card {
+            background: rgba(30, 30, 30, 0.6);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: #e2e8f0;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .link-hover { transition: transform 0.2s, background 0.2s; }
+        .link-hover:active { transform: scale(0.98); }
+        .dark .link-hover:hover { background: rgba(255,255,255,0.08); }
+        .link-hover:hover { background: rgba(255,255,255,0.9); transform: translateY(-2px); }
+
+        /* 标签选中态 */
+        .tag-active { background: #3b82f6; color: white; border-color: #3b82f6; }
+        .dark .tag-active { background: #3b82f6; color: white; }
+
+        /* 跑马灯 */
+        @keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
         .animate-marquee { animation: marquee 15s linear infinite; }
-        
-        /* 进度条样式 */
-        .progress-bar { background: rgba(0,0,0,0.05); border-radius: 4px; overflow: hidden; height: 6px; }
-        .dark .progress-bar { background: rgba(255,255,255,0.1); }
-        .progress-fill { background: linear-gradient(90deg, #3b82f6, #8b5cf6); height: 100%; transition: width 1s ease-in-out; }
       </style>
     </head>
-    <body class="bg-slate-50 dark:bg-darkbg text-slate-800 min-h-screen flex flex-col items-center py-8 px-4 relative overflow-x-hidden">
+    <body class="text-slate-800 dark:text-slate-200 min-h-screen flex flex-col items-center py-6 px-4">
       
-      <!-- 背景图层 -->
-      <div id="bg-layer" class="fixed inset-0 -z-10 bg-cover bg-center transition-opacity duration-1000 opacity-60" style="${bgUrl ? `background-image: url('${bgUrl}');` : ''}"></div>
+      <!-- 背景层 -->
+      <div class="bg-fixed-layer" style="${bgUrl ? `background-image: url('${bgUrl}');` : 'background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);'}"></div>
 
-      <!-- 1. 顶部功能条：天气 & 暗黑切换 & 音乐 -->
-      <div class="w-full max-w-xl flex justify-between items-center mb-6 gap-3">
-         <div class="glass px-4 py-2 rounded-full text-[11px] font-bold shadow-sm flex items-center gap-2">
-            <span id="greeting">Hello</span> • <span id="weather-info">📍 ${city} 加载中...</span>
+      <!-- 1. 顶部栏：时钟 & 天气 & 工具 -->
+      <div class="w-full max-w-[520px] flex justify-between items-center mb-5 gap-2 z-10">
+         <div class="glass-card px-4 py-2 rounded-full text-xs font-bold flex items-center gap-3">
+            <span id="clock" class="font-mono text-blue-600 dark:text-blue-400">00:00:00</span>
+            <span class="w-px h-3 bg-slate-300 dark:bg-slate-600"></span>
+            <span id="weather-info">📍 ${city}</span>
          </div>
          
          <div class="flex gap-2">
-            <!-- 音乐播放器 (如果有URL) -->
+            <!-- 音乐 -->
             ${music ? `
-            <button onclick="toggleMusic()" id="music-btn" class="glass w-9 h-9 rounded-full flex items-center justify-center hover:scale-110 transition">
-               <span id="music-icon">🎵</span>
-               <audio id="bg-audio" src="${music}" loop></audio>
+            <button onclick="toggleMusic()" class="glass-card w-9 h-9 rounded-full flex items-center justify-center hover:scale-105 transition shadow-sm">
+               <span id="music-icon">🎵</span><audio id="bg-audio" src="${music}" loop></audio>
             </button>` : ''}
-            
-            <!-- 模式切换 -->
-            <button onclick="toggleTheme()" class="glass w-9 h-9 rounded-full flex items-center justify-center hover:scale-110 transition">
-               <span class="dark:hidden">🌙</span><span class="hidden dark:inline">☀️</span>
-            </button>
-            
-            <!-- 分享 -->
-            <button onclick="showQR()" class="glass w-9 h-9 rounded-full flex items-center justify-center hover:scale-110 transition">
-               📤
+            <!-- 主题 -->
+            <button onclick="toggleTheme()" class="glass-card w-9 h-9 rounded-full flex items-center justify-center hover:scale-105 transition shadow-sm">
+               <span class="dark:hidden">🌑</span><span class="hidden dark:inline">☀️</span>
             </button>
          </div>
       </div>
 
-      <!-- 2. 跑马灯公告 -->
+      <!-- 2. 跑马灯 -->
       ${notice ? `
-      <div class="w-full max-w-xl mb-6 glass rounded-2xl py-2.5 px-4 overflow-hidden relative">
+      <div class="w-full max-w-[520px] mb-6 glass-card rounded-xl py-2 px-4 overflow-hidden relative z-10">
          <div class="animate-marquee whitespace-nowrap text-sm font-bold text-blue-500">
-            📢 ${notice} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 📢 ${notice}
+            🔔 ${notice}
          </div>
       </div>` : ''}
 
-      <main class="w-full max-w-[500px] z-10">
+      <main class="w-full max-w-[520px] z-10 animate-[fadeIn_0.5s_ease-out]">
         
-        <!-- 3. 个人核心卡片 -->
-        <div class="glass rounded-[2.5rem] p-8 mb-6 text-center shadow-xl relative overflow-hidden group">
-           <div class="w-28 h-28 mx-auto mb-5 rounded-full p-1 bg-white/50 dark:bg-white/10 shadow-lg relative">
-              <img src="/avatar" onerror="this.src='${favicon}'" class="w-full h-full rounded-full object-cover transition duration-1000 group-hover:rotate-[360deg]"/>
-              ${status === 'online' ? '<div class="absolute bottom-1 right-2 w-5 h-5 bg-green-500 border-4 border-white dark:border-slate-800 rounded-full animate-pulse"></div>' : ''}
+        <!-- 3. 个人卡片 -->
+        <div class="glass-card rounded-[2rem] p-6 mb-6 text-center relative overflow-hidden group">
+           <!-- 状态光圈 -->
+           <div class="w-24 h-24 mx-auto mb-4 rounded-full p-1 bg-white/50 dark:bg-black/20 shadow-lg relative">
+              <img src="/avatar" onerror="this.src='${favicon}'" class="w-full h-full rounded-full object-cover transition duration-700 group-hover:rotate-[360deg]"/>
+              ${status === 'online' ? '<span class="absolute bottom-1 right-1 w-4 h-4 bg-green-500 border-2 border-white dark:border-slate-800 rounded-full animate-pulse"></span>' : ''}
            </div>
            
-           <h1 class="text-3xl font-extrabold mb-2 tracking-tighter">${siteTitle}</h1>
-           
-           <div class="h-6 mb-6">
-              <p id="bio-text" class="text-sm font-medium text-slate-500 dark:text-slate-400"></p>
+           <h1 class="text-2xl font-extrabold mb-1 tracking-tight">${siteTitle}</h1>
+           <div class="h-5 mb-5"><p id="bio-text" class="text-xs font-medium opacity-70"></p></div>
+
+           <!-- 社交按钮组 -->
+           <div class="flex justify-center gap-5 mb-5 items-center">
+              ${github ? `<a href="${github}" target="_blank" class="hover:text-blue-500 transition hover:-translate-y-1"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg></a>` : ''}
+              ${telegram ? `<a href="${telegram}" target="_blank" class="hover:text-blue-500 transition hover:-translate-y-1"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.14-.24.24-.44.24l.197-2.97 5.407-4.882c.232-.204-.055-.317-.366-.113L7.18 13.9l-2.87-.898c-.628-.19-.643-.628.131-.928l11.22-4.322c.52-.19.974.12.833.469z"/></svg></a>` : ''}
+              
+              <!-- QQ图标 (修复版) -->
+              ${qq ? `<a href="tencent://AddContact/?fromId=45&subcmd=all&uin=${qq}" class="hover:text-blue-500 transition hover:-translate-y-1">
+                 <svg class="w-5 h-5" viewBox="0 0 1024 1024" fill="currentColor"><path d="M824.8 613.2c-16-51.4-34.4-94.6-62.7-165.3C766.5 262.2 689.3 112 511.5 112 331.7 112 256.4 265.2 261 447.9c-28.4 70.8-46.7 113.7-62.7 165.3-34 109.5-23 154.8-14.6 155.8 18 2.2 70.1-82.4 70.1-82.4 0 49 25.2 112.9 79.8 159-26.4 8.1-85.7 29.9-71.6 53.8 11.4 19.3 196.2 12.3 249.5 6.3 53.3 6 238.1 13 249.5-6.3 14.1-23.8-45.2-45.7-71.6-53.8 54.6-46.2 79.8-110.1 79.8-159 0 0 52.1 84.6 70.1 82.4 8.5-1.1 19.5-46.4-14.5-155.8z" /></svg>
+              </a>` : ''}
+              
+              <a href="mailto:${email}" class="text-xs font-bold bg-slate-800 text-white px-4 py-1.5 rounded-lg hover:bg-slate-700 transition shadow-lg shadow-slate-500/20">联系 Email</a>
            </div>
 
-           <!-- 社交图标组 (新功能) -->
-           <div class="flex justify-center gap-4 mb-6">
-              ${github ? `<a href="${github}" target="_blank" class="hover:scale-125 transition">
-                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
-              </a>` : ''}
-              ${telegram ? `<a href="${telegram}" target="_blank" class="text-[#0088cc] hover:scale-125 transition">
-                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.14-.24.24-.44.24l.197-2.97 5.407-4.882c.232-.204-.055-.317-.366-.113L7.18 13.9l-2.87-.898c-.628-.19-.643-.628.131-.928l11.22-4.322c.52-.19.974.12.833.469z"/></svg>
-              </a>` : ''}
-              <a href="tencent://AddContact/?fromId=45&subcmd=all&uin=${qq}" class="text-[#12B7F5] hover:scale-125 transition">
-                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm3.22 6.97a.75.75 0 00-1.06 0L12 11.19l-2.16-2.22a.75.75 0 00-1.06 1.06l2.16 2.22-2.16 2.22a.75.75 0 101.06 1.06L12 13.31l2.16 2.22a.75.75 0 101.06-1.06l-2.16-2.22 2.16-2.22a.75.75 0 000-1.06z"/></svg>
-              </a>
+           <!-- 全年进度 -->
+           <div class="bg-black/5 dark:bg-white/5 rounded-lg p-3">
+              <div class="flex justify-between text-[10px] font-bold opacity-50 mb-1 uppercase">
+                 <span>2025 Progress</span><span id="year-percent">0%</span>
+              </div>
+              <div class="h-1.5 bg-black/5 dark:bg-white/10 rounded-full overflow-hidden">
+                 <div id="year-fill" class="h-full bg-blue-500 rounded-full transition-all duration-1000" style="width:0%"></div>
+              </div>
            </div>
-
-           <a href="mailto:${email}" class="inline-block px-8 py-3 bg-slate-900 dark:bg-white dark:text-slate-900 text-white rounded-2xl text-sm font-bold shadow-lg hover:shadow-blue-500/20 transition-all active:scale-95">联系我 Email</a>
         </div>
-
-        <!-- 4. 全年进度条 (新功能) -->
-        <div class="glass rounded-2xl p-4 mb-6">
-           <div class="flex justify-between text-[10px] font-bold mb-2 uppercase tracking-widest opacity-60">
-              <span>2025 年进度</span>
-              <span id="year-percent">0%</span>
-           </div>
-           <div class="progress-bar"><div id="year-fill" class="progress-fill" style="width: 0%"></div></div>
+        
+        <!-- 4. 标签筛选 (新功能) -->
+        <div class="flex gap-2 mb-4 overflow-x-auto pb-1 no-scrollbar justify-center">
+           ${tags.map((tag: string) => `
+             <button onclick="filterTag('${tag}')" class="tag-btn text-xs font-bold px-3 py-1.5 rounded-full glass-card hover:bg-white transition whitespace-nowrap ${tag === '全部' ? 'tag-active' : ''}" data-tag="${tag}">
+               ${tag}
+             </button>
+           `).join('')}
         </div>
 
         <!-- 5. 搜索框 -->
-        <div class="relative mb-6">
-          <input type="text" id="search-input" placeholder="🔍 快速寻找..." 
-                 class="w-full pl-5 pr-4 py-4 rounded-2xl glass outline-none text-sm font-bold shadow-inner"
-                 onkeyup="filterLinks()">
+        <div class="relative mb-5 group">
+           <input type="text" id="search-input" placeholder="🔍  Search..." 
+                  class="w-full pl-5 pr-4 py-3.5 rounded-2xl glass-card text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500/30 transition"
+                  onkeyup="filterLinks()">
         </div>
 
         <!-- 6. 链接列表 -->
-        <div id="link-container" class="space-y-4">
+        <div id="link-container" class="space-y-3">
           ${linksResult.results.map((link: any) => `
-            <div class="link-item link-card glass p-4 rounded-3xl flex items-center gap-4 relative group cursor-pointer overflow-hidden">
+            <div class="link-item link-hover glass-card p-3.5 rounded-2xl flex items-center gap-4 relative group cursor-pointer overflow-hidden" data-tag="${link.tag || '默认'}">
               <a href="${link.url}" target="_blank" class="absolute inset-0 z-10"></a>
-              <div class="w-14 h-14 rounded-2xl bg-white/50 dark:bg-white/5 flex items-center justify-center shadow-inner shrink-0 overflow-hidden border border-white/20">
-                ${!link.icon ? `<img src="https://www.google.com/s2/favicons?domain=${link.url}&sz=128" class="w-full h-full object-cover" />` : (link.icon.startsWith('http') ? `<img src="${link.icon}" class="w-full h-full object-cover" />` : `<span class="text-2xl">${link.icon}</span>`)}
+              <div class="w-12 h-12 rounded-xl bg-white/60 dark:bg-white/5 flex items-center justify-center shadow-sm shrink-0 overflow-hidden border border-white/30">
+                ${!link.icon ? `<img src="https://www.google.com/s2/favicons?domain=${link.url}&sz=64" class="w-full h-full object-cover">` : (link.icon.startsWith('http') ? `<img src="${link.icon}" class="w-full h-full object-cover">` : `<span class="text-xl">${link.icon}</span>`)}
               </div>
               <div class="flex-1 min-w-0">
-                <h3 class="font-bold text-base truncate link-title">${link.title}</h3>
-                <p class="text-[11px] opacity-60 truncate link-desc font-medium">${link.description || link.url}</p>
+                <div class="flex items-center gap-2">
+                   <h3 class="font-bold text-sm truncate link-title">${link.title}</h3>
+                   ${link.tag ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-500 font-bold">${link.tag}</span>` : ''}
+                </div>
+                <p class="text-[10px] opacity-60 truncate mt-0.5 link-desc font-medium">${link.description || link.url}</p>
               </div>
-              <button onclick="copyLink('${link.url}')" class="relative z-20 p-2.5 rounded-xl hover:bg-blue-500 hover:text-white transition group-hover:opacity-100 opacity-0">
-                 📋
-              </button>
+              <button onclick="copyLink('${link.url}')" class="relative z-20 p-2 rounded-lg hover:bg-blue-500 hover:text-white transition opacity-0 group-hover:opacity-100 scale-90 hover:scale-100">📋</button>
             </div>
           `).join('')}
         </div>
         
-        <!-- 7. 底部信息：胶囊背景 -->
-        <footer class="mt-10 text-center space-y-4 pb-12">
-            <div class="inline-flex flex-wrap justify-center gap-3">
-               <span class="px-4 py-1.5 bg-black/70 backdrop-blur-md text-white rounded-full text-[10px] font-bold border border-white/10 shadow-xl">👀 ${views} 访问</span>
-               <span class="px-4 py-1.5 bg-black/70 backdrop-blur-md text-white rounded-full text-[10px] font-bold border border-white/10 shadow-xl">⏳ 运行 ${daysRunning} 天</span>
-               <span class="px-4 py-1.5 bg-black/70 backdrop-blur-md text-white rounded-full text-[10px] font-bold border border-white/10 shadow-xl">⚡ <span id="load-time">0</span>ms</span>
+        <!-- 7. 底部 -->
+        <footer class="mt-8 text-center pb-10">
+            <div class="inline-flex gap-3 text-[10px] font-bold opacity-60 bg-black/5 dark:bg-white/5 px-4 py-2 rounded-full backdrop-blur-sm">
+               <span>👀 ${views}</span>
+               <span class="w-px h-3 bg-current opacity-30"></span>
+               <span>⏳ ${daysRunning} DAYS</span>
+               <span class="w-px h-3 bg-current opacity-30"></span>
+               <span>⚡ <span id="load-time">0</span>ms</span>
             </div>
-            <div>
-               <a href="/admin" class="text-[10px] text-slate-400 font-bold hover:text-blue-500 uppercase tracking-widest">Admin Login</a>
-            </div>
+            <div class="mt-2"><a href="/admin" class="text-[9px] opacity-30 hover:opacity-100 font-bold uppercase tracking-widest">Login</a></div>
         </footer>
       </main>
 
-      <!-- 二维码 & 提示弹窗 -->
-      <div id="qr-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden z-50 flex items-center justify-center p-6" onclick="this.classList.add('hidden')">
-         <div class="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] text-center shadow-2xl" onclick="event.stopPropagation()">
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=https://${c.req.header('host')}" class="w-56 h-56 rounded-2xl mx-auto mb-4 border-4 border-slate-50 dark:border-slate-800" />
-            <p class="font-bold text-slate-800 dark:text-white">扫一扫分享主页</p>
+      <!-- 弹窗组件 -->
+      <div id="qr-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden z-50 flex items-center justify-center" onclick="this.classList.add('hidden')">
+         <div class="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-2xl transform scale-95 animate-[fadeIn_0.2s_ease-out]" onclick="event.stopPropagation()">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://${c.req.header('host')}" class="rounded-xl border-4 border-slate-100 dark:border-slate-800" />
          </div>
       </div>
-      <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 glass px-6 py-3 rounded-2xl font-bold text-sm shadow-2xl transition-all opacity-0 translate-y-10 pointer-events-none z-[100]">✅ 链接已复制</div>
+      <div id="toast" class="fixed top-10 left-1/2 -translate-x-1/2 glass-card px-6 py-2 rounded-full font-bold text-xs shadow-xl transition-all opacity-0 -translate-y-10 z-[100] flex items-center gap-2 text-green-600">
+        <span>✅</span> 链接已复制
+      </div>
 
       <script>
-        // 1. 动态问候 & 时间
-        const hours = new Date().getHours();
-        const greetEl = document.getElementById('greeting');
-        if(hours < 5) greetEl.innerText = '🌙 深夜好';
-        else if(hours < 11) greetEl.innerText = '☀️ 早安';
-        else if(hours < 14) greetEl.innerText = '🍲 午安';
-        else if(hours < 18) greetEl.innerText = '☕ 下午好';
-        else greetEl.innerText = '🌆 晚安';
+        // 1. 实时时钟
+        setInterval(() => {
+           document.getElementById('clock').innerText = new Date().toLocaleTimeString('en-GB');
+        }, 1000);
 
-        // 2. 暗黑模式切换
-        function toggleTheme() {
-          const isDark = document.documentElement.classList.toggle('dark');
-          localStorage.theme = isDark ? 'dark' : 'light';
-        }
-
-        // 3. 全年进度计算
-        const start = new Date(new Date().getFullYear(), 0, 1);
-        const end = new Date(new Date().getFullYear() + 1, 0, 1);
-        const progress = (new Date() - start) / (end - start);
-        document.getElementById('year-percent').innerText = (progress * 100).toFixed(1) + '%';
-        setTimeout(() => document.getElementById('year-fill').style.width = (progress * 100) + '%', 500);
-
-        // 4. 打字机
-        const bioText = "${bio || 'Welcome to my space!'}";
-        const bioEl = document.getElementById('bio-text');
-        let i = 0;
-        (function type() {
-          if (i < bioText.length) { bioEl.innerHTML += bioText.charAt(i++); setTimeout(type, 50); }
-        })();
-
-        // 5. 天气与加载耗时
-        window.onload = () => {
-          document.getElementById('load-time').innerText = Date.now() - ${startTime};
-          fetchWeather();
-        };
-        async function fetchWeather() {
-           try {
-              const res = await fetch(\`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true\`);
-              const data = await res.json();
-              document.getElementById('weather-info').innerText = \`📍 ${city} • \${Math.round(data.current_weather.temperature)}°C\`;
-           } catch(e) { document.getElementById('weather-info').innerText = '📍 ${city}'; }
-        }
-
-        // 6. 搜索
-        function filterLinks() {
-           const val = document.getElementById('search-input').value.toUpperCase();
-           document.querySelectorAll('.link-item').forEach(item => {
-              const text = item.innerText.toUpperCase();
-              item.style.display = text.includes(val) ? "" : "none";
+        // 2. 标签筛选
+        function filterTag(tag) {
+           document.querySelectorAll('.tag-btn').forEach(b => {
+              if(b.dataset.tag === tag) b.classList.add('tag-active');
+              else b.classList.remove('tag-active');
+           });
+           const items = document.querySelectorAll('.link-item');
+           items.forEach(item => {
+              if (tag === '全部' || item.dataset.tag === tag) item.style.display = 'flex';
+              else item.style.display = 'none';
            });
         }
 
-        // 7. 复制
-        function copyLink(url) {
-           navigator.clipboard.writeText(url);
-           const t = document.getElementById('toast');
-           t.classList.remove('opacity-0', 'translate-y-10');
-           setTimeout(() => t.classList.add('opacity-0', 'translate-y-10'), 2000);
+        // 3. 基础功能
+        function toggleTheme() {
+           const isDark = document.documentElement.classList.toggle('dark');
+           localStorage.theme = isDark ? 'dark' : 'light';
         }
-
-        function showQR() { document.getElementById('qr-modal').classList.remove('hidden'); }
-
-        // 8. 音乐切换
         function toggleMusic() {
            const audio = document.getElementById('bg-audio');
            const icon = document.getElementById('music-icon');
-           if(audio.paused) { audio.play(); icon.innerText = '⏸️'; icon.classList.add('animate-spin'); }
-           else { audio.pause(); icon.innerText = '🎵'; icon.classList.remove('animate-spin'); }
+           audio.paused ? (audio.play(), icon.classList.add('animate-spin')) : (audio.pause(), icon.classList.remove('animate-spin'));
         }
+        function copyLink(url) {
+           navigator.clipboard.writeText(url);
+           const t = document.getElementById('toast');
+           t.classList.remove('opacity-0', '-translate-y-10');
+           setTimeout(() => t.classList.add('opacity-0', '-translate-y-10'), 2000);
+        }
+        function showQR() { document.getElementById('qr-modal').classList.remove('hidden'); }
+        
+        // 4. 初始化
+        window.onload = () => {
+           document.getElementById('load-time').innerText = Date.now() - ${startTime};
+           const p = ((new Date() - new Date(new Date().getFullYear(),0,1)) / (new Date(new Date().getFullYear()+1,0,1) - new Date(new Date().getFullYear(),0,1))) * 100;
+           document.getElementById('year-fill').style.width = p + '%';
+           document.getElementById('year-percent').innerText = p.toFixed(1) + '%';
+           
+           // Bio打字机
+           const bioText = "${bio || 'Hello World'}";
+           const bioEl = document.getElementById('bio-text');
+           let i=0; (function type(){ if(i<bioText.length){ bioEl.innerText+=bioText.charAt(i++); setTimeout(type,50); } })();
+           
+           // 搜索
+           document.getElementById('search-input').addEventListener('keyup', (e) => {
+              const val = e.target.value.toUpperCase();
+              document.querySelectorAll('.link-item').forEach(el => {
+                 el.style.display = el.innerText.toUpperCase().includes(val) ? 'flex' : 'none';
+              });
+           });
+           
+           // 天气
+           fetch(\`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true\`)
+             .then(r=>r.json()).then(d=>document.getElementById('weather-info').innerText=\`📍 ${city} \${Math.round(d.current_weather.temperature)}°C\`).catch(()=>{});
+        };
       </script>
     </body>
     </html>
   `)
 })
 
-// 头像读取
+// 头像
 app.get('/avatar', async (c) => {
-  const favicon = "https://twbk.cn/wp-content/uploads/2025/12/tx.png"
-  if (!c.env.BUCKET) return c.redirect(favicon)
-  const object = await c.env.BUCKET.get('avatar.png')
-  if (!object) return c.redirect(favicon)
-  const headers = new Headers()
-  object.writeHttpMetadata(headers)
-  headers.set('etag', object.httpEtag)
-  return new Response(object.body, { headers })
+  const f = "https://twbk.cn/wp-content/uploads/2025/12/tx.png"
+  if(!c.env.BUCKET) return c.redirect(f)
+  const o = await c.env.BUCKET.get('avatar.png')
+  return o ? new Response(o.body, {headers:{'etag':o.httpEtag}}) : c.redirect(f)
 })
 
-// 后台管理页 (已适配暗黑模式)
+// ------ 后台管理 (完全重构 UI) ------
 app.get('/admin', async (c) => {
   if (!c.env.DB) return c.text('DB Error', 500)
   const cookie = getCookie(c, 'auth')
-  if (cookie !== 'true') {
-    return c.html(`
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <body style="height:100vh;display:flex;align-items:center;justify-content:center;background:#0f172a;color:white;font-family:system-ui;">
-        <form action="/api/login" method="post" style="padding:2rem;background:#1e293b;border-radius:1rem;width:300px;">
-          <h2 style="margin-bottom:1rem">LX Admin</h2>
-          <input type="password" name="password" placeholder="Passcode" style="width:100%;padding:10px;border-radius:5px;border:none;margin-bottom:1rem;">
-          <button style="width:100%;padding:10px;background:#3b82f6;color:white;border:none;border-radius:5px;cursor:pointer;">Login</button>
-        </form>
-      </body>
-    `)
-  }
+  if (cookie !== 'true') return c.html(`
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <body class="bg-gray-900 flex items-center justify-center min-h-screen font-sans">
+      <form action="/api/login" method="post" class="bg-gray-800 p-8 rounded-2xl shadow-2xl w-80 text-center">
+         <div class="text-4xl mb-4">🔐</div>
+         <h1 class="text-white text-xl font-bold mb-6">Admin Panel</h1>
+         <input type="password" name="password" placeholder="Passcode" class="w-full bg-gray-700 text-white p-3 rounded-lg border border-gray-600 mb-4 focus:outline-none focus:border-blue-500 text-center">
+         <button class="w-full bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-lg font-bold transition">Unlock</button>
+      </form>
+    </body>`)
 
   const editId = c.req.query('edit_id')
   let editLink = null
@@ -357,86 +376,167 @@ app.get('/admin', async (c) => {
     <html lang="zh-CN">
     <head>
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Admin Console</title>
+      <title>LX Admin Dashboard</title>
       <script src="https://cdn.tailwindcss.com"></script>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+      <style>
+        body { font-family: 'Inter', sans-serif; }
+        .input-dark { background: #1e293b; border: 1px solid #334155; color: white; }
+        .input-dark:focus { border-color: #3b82f6; outline: none; }
+      </style>
     </head>
-    <body class="bg-slate-900 text-slate-200 p-4 pb-20">
-      <div class="max-w-5xl mx-auto">
-        <div class="flex justify-between items-center mb-6 bg-slate-800 p-4 rounded-2xl">
-          <h1 class="font-bold">LX Console V4.0</h1>
-          <a href="/" target="_blank" class="text-blue-400 text-sm">Preview Site</a>
+    <body class="bg-[#0f172a] text-slate-300 min-h-screen">
+      
+      <!-- 顶部导航 -->
+      <nav class="bg-[#1e293b] border-b border-gray-700 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+         <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">LX</div>
+            <h1 class="font-bold text-white">Dashboard <span class="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded ml-2">V5.0</span></h1>
+         </div>
+         <a href="/" target="_blank" class="text-sm font-bold text-blue-400 hover:text-white transition flex items-center gap-1">
+            Preview <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+         </a>
+      </nav>
+
+      <div class="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- 左侧：网站配置 -->
+        <div class="lg:col-span-4 space-y-6">
+           <div class="bg-[#1e293b] rounded-2xl p-6 shadow-xl border border-gray-700">
+              <h2 class="text-white font-bold mb-5 flex items-center gap-2">⚙️ 全局配置</h2>
+              <form action="/api/config" method="post" class="space-y-4">
+                 <div>
+                    <label class="text-xs font-bold text-gray-500 uppercase">站点标题</label>
+                    <input type="text" name="site_title" value="${siteTitle || ''}" class="w-full input-dark p-2.5 rounded-lg text-sm mt-1">
+                 </div>
+                 <div>
+                    <label class="text-xs font-bold text-gray-500 uppercase">个人简介 (Bio)</label>
+                    <textarea name="bio" rows="2" class="w-full input-dark p-2.5 rounded-lg text-sm mt-1">${bio || ''}</textarea>
+                 </div>
+                 <div>
+                    <label class="text-xs font-bold text-gray-500 uppercase text-yellow-500">滚动公告</label>
+                    <input type="text" name="notice" value="${notice || ''}" class="w-full input-dark p-2.5 rounded-lg text-sm mt-1 border-yellow-900/50">
+                 </div>
+                 <div class="grid grid-cols-2 gap-3">
+                    <div>
+                       <label class="text-xs font-bold text-gray-500 uppercase">背景图 URL</label>
+                       <input type="text" name="bg_url" value="${bgUrl || ''}" class="w-full input-dark p-2.5 rounded-lg text-sm mt-1">
+                    </div>
+                    <div>
+                       <label class="text-xs font-bold text-gray-500 uppercase">建站日期</label>
+                       <input type="date" name="start_date" value="${startDate || ''}" class="w-full input-dark p-2.5 rounded-lg text-sm mt-1">
+                    </div>
+                 </div>
+                 <div class="grid grid-cols-2 gap-3">
+                    <div>
+                       <label class="text-xs font-bold text-gray-500 uppercase">状态</label>
+                       <select name="status" class="w-full input-dark p-2.5 rounded-lg text-sm mt-1">
+                          <option value="online" ${status === 'online' ? 'selected' : ''}>🟢 在线</option>
+                          <option value="busy" ${status === 'busy' ? 'selected' : ''}>🔴 忙碌</option>
+                       </select>
+                    </div>
+                    <div>
+                       <label class="text-xs font-bold text-gray-500 uppercase">QQ</label>
+                       <input type="text" name="qq" value="${qq || ''}" class="w-full input-dark p-2.5 rounded-lg text-sm mt-1">
+                    </div>
+                 </div>
+                 <div class="grid grid-cols-2 gap-3">
+                    <input type="text" name="email" value="${email || ''}" placeholder="Email" class="input-dark p-2.5 rounded-lg text-sm">
+                    <input type="text" name="music_url" value="${music || ''}" placeholder="Music URL" class="input-dark p-2.5 rounded-lg text-sm">
+                 </div>
+                 <div class="grid grid-cols-2 gap-3">
+                    <input type="text" name="github" value="${github || ''}" placeholder="GitHub URL" class="input-dark p-2.5 rounded-lg text-sm">
+                    <input type="text" name="telegram" value="${telegram || ''}" placeholder="Telegram URL" class="input-dark p-2.5 rounded-lg text-sm">
+                 </div>
+                 <button class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-900/50 transition">保存配置</button>
+              </form>
+           </div>
         </div>
 
-        <div class="grid lg:grid-cols-3 gap-6">
-          <div class="lg:col-span-1 space-y-4">
-            <div class="bg-slate-800 p-5 rounded-2xl">
-              <h2 class="font-bold mb-4 border-b border-slate-700 pb-2">Global Settings</h2>
-              <form action="/api/config" method="post" class="space-y-3">
-                <input type="text" name="site_title" value="${siteTitle || ''}" class="w-full bg-slate-900 border-none p-2 rounded text-sm" placeholder="Site Title">
-                <textarea name="bio" class="w-full bg-slate-900 border-none p-2 rounded text-sm" rows="2" placeholder="Bio">${bio || ''}</textarea>
-                <textarea name="notice" class="w-full bg-slate-900 border-none p-2 rounded text-sm text-yellow-500" rows="2" placeholder="Notice bar">${notice || ''}</textarea>
-                <input type="text" name="bg_url" value="${bgUrl || ''}" class="w-full bg-slate-900 border-none p-2 rounded text-sm" placeholder="Background Image URL">
-                <input type="text" name="music_url" value="${music || ''}" class="w-full bg-slate-900 border-none p-2 rounded text-sm" placeholder="Music MP3 URL">
-                <div class="grid grid-cols-2 gap-2">
-                   <input type="text" name="email" value="${email || ''}" class="bg-slate-900 border-none p-2 rounded text-sm" placeholder="Email">
-                   <input type="text" name="qq" value="${qq || ''}" class="bg-slate-900 border-none p-2 rounded text-sm" placeholder="QQ">
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                   <input type="text" name="github" value="${github || ''}" class="bg-slate-900 border-none p-2 rounded text-sm" placeholder="Github URL">
-                   <input type="text" name="telegram" value="${telegram || ''}" class="bg-slate-900 border-none p-2 rounded text-sm" placeholder="TG URL">
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                   <select name="status" class="bg-slate-900 border-none p-2 rounded text-sm">
-                     <option value="online" ${status === 'online' ? 'selected' : ''}>🟢 Online</option>
-                     <option value="busy" ${status === 'busy' ? 'selected' : ''}>🔴 Busy</option>
-                   </select>
-                   <input type="date" name="start_date" value="${startDate || ''}" class="bg-slate-900 border-none p-2 rounded text-sm">
-                </div>
-                <button class="w-full bg-blue-600 text-white py-2 rounded font-bold mt-2">Update Config</button>
+        <!-- 右侧：链接管理 -->
+        <div class="lg:col-span-8 space-y-6">
+           
+           <!-- 添加/编辑卡片 -->
+           <div class="bg-[#1e293b] rounded-2xl p-6 shadow-xl border border-gray-700 relative overflow-hidden">
+              <div class="absolute right-0 top-0 p-10 opacity-5 text-9xl pointer-events-none">🔗</div>
+              <h2 class="text-white font-bold mb-5 flex justify-between items-center">
+                 <span>${editLink ? '✏️ 编辑链接' : '✨ 添加新链接'}</span>
+                 ${editLink ? '<a href="/admin" class="text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full hover:bg-red-500/30">取消编辑</a>' : ''}
+              </h2>
+              <form action="${editLink ? '/api/links/update' : '/api/links'}" method="post" class="space-y-4 relative z-10">
+                 ${editLink ? `<input type="hidden" name="id" value="${editLink.id}">` : ''}
+                 <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                       <label class="text-xs font-bold text-gray-500 uppercase">标题</label>
+                       <input type="text" name="title" value="${editLink?.title || ''}" class="w-full input-dark p-3 rounded-lg mt-1" required placeholder="例如：我的博客">
+                    </div>
+                    <div>
+                       <label class="text-xs font-bold text-gray-500 uppercase">链接 URL</label>
+                       <input type="url" name="url" value="${editLink?.url || ''}" class="w-full input-dark p-3 rounded-lg mt-1" required placeholder="https://...">
+                    </div>
+                 </div>
+                 <div class="grid grid-cols-12 gap-4">
+                    <div class="col-span-2">
+                       <label class="text-xs font-bold text-gray-500 uppercase">排序</label>
+                       <input type="number" name="sort_order" value="${editLink?.sort_order || 0}" class="w-full input-dark p-3 rounded-lg mt-1 text-center">
+                    </div>
+                    <div class="col-span-3">
+                       <label class="text-xs font-bold text-gray-500 uppercase">标签 (New)</label>
+                       <input type="text" name="tag" value="${editLink?.tag || ''}" class="w-full input-dark p-3 rounded-lg mt-1" placeholder="如:工作">
+                    </div>
+                    <div class="col-span-7">
+                       <label class="text-xs font-bold text-gray-500 uppercase">图标 (Emoji / URL)</label>
+                       <input type="text" name="icon" value="${editLink?.icon || ''}" class="w-full input-dark p-3 rounded-lg mt-1" placeholder="留空自动获取">
+                    </div>
+                 </div>
+                 <div>
+                    <label class="text-xs font-bold text-gray-500 uppercase">描述</label>
+                    <input type="text" name="description" value="${editLink?.description || ''}" class="w-full input-dark p-3 rounded-lg mt-1" placeholder="一句话描述...">
+                 </div>
+                 <button class="w-full ${editLink ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-emerald-600 hover:bg-emerald-500'} text-white font-bold py-3 rounded-xl transition">
+                    ${editLink ? '更新链接' : '立即添加'}
+                 </button>
               </form>
-            </div>
-          </div>
+           </div>
 
-          <div class="lg:col-span-2 space-y-4">
-             <div class="bg-slate-800 p-5 rounded-2xl border-l-4 ${editLink ? 'border-blue-500' : 'border-emerald-500'}">
-                <h2 class="font-bold mb-4">${editLink ? '✏️ Edit Link' : '➕ Add Link'}</h2>
-                <form action="${editLink ? '/api/links/update' : '/api/links'}" method="post" class="space-y-3">
-                   ${editLink ? `<input type="hidden" name="id" value="${editLink.id}">` : ''}
-                   <div class="grid md:grid-cols-2 gap-3">
-                      <input type="text" name="title" value="${editLink?.title || ''}" placeholder="Title" class="w-full bg-slate-900 border-none p-2 rounded" required>
-                      <input type="url" name="url" value="${editLink?.url || ''}" placeholder="URL" class="w-full bg-slate-900 border-none p-2 rounded" required>
-                   </div>
-                   <div class="flex gap-2">
-                      <input type="number" name="sort_order" value="${editLink?.sort_order || 0}" class="w-20 bg-slate-900 border-none p-2 rounded text-center">
-                      <input type="text" name="icon" value="${editLink?.icon || ''}" placeholder="Icon (Emoji/URL)" class="flex-1 bg-slate-900 border-none p-2 rounded">
-                   </div>
-                   <input type="text" name="description" value="${editLink?.description || ''}" placeholder="Short desc" class="w-full bg-slate-900 border-none p-2 rounded">
-                   <button class="w-full py-2 rounded text-white font-bold ${editLink ? 'bg-blue-600' : 'bg-emerald-600'}">
-                      ${editLink ? 'Save Changes' : 'Create Link'}
-                   </button>
-                </form>
-             </div>
+           <!-- 链接列表 -->
+           <div class="bg-[#1e293b] rounded-2xl shadow-xl border border-gray-700 overflow-hidden">
+              <div class="p-4 bg-gray-800/50 border-b border-gray-700 flex justify-between items-center">
+                 <span class="font-bold text-white">所有链接 (${linksResult.results.length})</span>
+                 <span class="text-xs text-gray-500">数字越小越靠前</span>
+              </div>
+              <div class="divide-y divide-gray-700">
+                 ${linksResult.results.map((link: any) => `
+                   <div class="p-4 flex items-center gap-4 hover:bg-gray-700/30 transition group">
+                      <form action="/api/links/update_order" method="post">
+                         <input type="hidden" name="id" value="${link.id}">
+                         <input name="sort_order" value="${link.sort_order}" class="w-8 h-8 bg-gray-900 border border-gray-600 rounded text-center text-sm text-gray-300 focus:border-blue-500 outline-none" onchange="this.form.submit()">
+                      </form>
+                      
+                      <div class="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center overflow-hidden border border-gray-600">
+                         ${!link.icon ? '🕸️' : (link.icon.startsWith('http') ? `<img src="${link.icon}" class="w-full h-full object-cover">` : link.icon)}
+                      </div>
+                      
+                      <div class="flex-1 min-w-0">
+                         <div class="flex items-center gap-2">
+                            <span class="font-bold text-gray-200 truncate">${link.title}</span>
+                            ${link.tag ? `<span class="text-[10px] bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded border border-blue-800">${link.tag}</span>` : ''}
+                         </div>
+                         <div class="text-xs text-gray-500 truncate">${link.url}</div>
+                      </div>
 
-             <div class="bg-slate-800 rounded-2xl overflow-hidden">
-                ${linksResult.results.map((link: any) => `
-                  <div class="flex items-center gap-4 p-4 border-b border-slate-700 hover:bg-slate-700/50">
-                     <span class="text-xs text-slate-500 font-mono">${link.sort_order}</span>
-                     <div class="w-10 h-10 rounded-lg bg-slate-900 flex items-center justify-center overflow-hidden">
-                        ${!link.icon ? '🔗' : (link.icon.startsWith('http') ? `<img src="${link.icon}" class="w-full h-full object-cover">` : link.icon)}
-                     </div>
-                     <div class="flex-1">
-                        <div class="font-bold text-sm">${link.title}</div>
-                        <div class="text-[10px] text-slate-500">${link.url}</div>
-                     </div>
-                     <a href="/admin?edit_id=${link.id}" class="text-blue-400 text-xs">Edit</a>
-                     <form action="/api/links/delete" method="post">
-                        <input type="hidden" name="id" value="${link.id}">
-                        <button class="text-red-400 text-xs px-2">Del</button>
-                     </form>
-                  </div>
-                `).join('')}
-             </div>
-          </div>
+                      <div class="flex items-center gap-2 opacity-100 lg:opacity-0 group-hover:opacity-100 transition">
+                         <a href="/admin?edit_id=${link.id}" class="p-2 bg-blue-500/10 text-blue-400 rounded hover:bg-blue-500 hover:text-white transition">✏️</a>
+                         <form action="/api/links/delete" method="post" onsubmit="return confirm('确定删除？')">
+                            <input type="hidden" name="id" value="${link.id}">
+                            <button class="p-2 bg-red-500/10 text-red-400 rounded hover:bg-red-500 hover:text-white transition">🗑️</button>
+                         </form>
+                      </div>
+                   </div>
+                 `).join('')}
+              </div>
+           </div>
+
         </div>
       </div>
     </body>
@@ -444,41 +544,31 @@ app.get('/admin', async (c) => {
   `)
 })
 
-// API 逻辑处理
-app.post('/api/login', async (c) => {
-  const body = await c.req.parseBody(); const dbPass = await getConfig(c.env.DB, 'password')
-  if (body.password === dbPass) { setCookie(c, 'auth', 'true', { httpOnly: true, maxAge: 86400 * 30, path: '/' }); return c.redirect('/admin') }
-  return c.text('Unauthorized', 401)
-})
+// API (保持不变，增加 Tag 处理)
+app.post('/api/login', async (c) => { const body=await c.req.parseBody(); const p=await getConfig(c.env.DB,'password'); if(body.password===p){setCookie(c,'auth','true',{httpOnly:true,maxAge:86400*30,path:'/'});return c.redirect('/admin')}return c.text('Error',403)})
 app.post('/api/config', async (c) => {
-  if (getCookie(c, 'auth') !== 'true') return c.redirect('/admin')
+  if (getCookie(c,'auth')!=='true')return c.redirect('/admin')
   const body = await c.req.parseBody()
-  const updates = ['bio', 'email', 'qq', 'bg_url', 'site_title', 'status', 'start_date', 'notice', 'github', 'telegram', 'music_url']
+  const keys = ['bio','email','qq','bg_url','site_title','status','start_date','notice','github','telegram','music_url']
   const stmt = c.env.DB.prepare("UPDATE config SET value = ? WHERE key = ?")
-  await c.env.DB.batch(updates.map(key => stmt.bind(body[key], key)))
+  await c.env.DB.batch(keys.map(k=>stmt.bind(body[k],k)))
   return c.redirect('/admin')
 })
 app.post('/api/links', async (c) => {
-  if (getCookie(c, 'auth') !== 'true') return c.redirect('/admin')
+  if (getCookie(c,'auth')!=='true')return c.redirect('/admin')
   const body = await c.req.parseBody()
-  await c.env.DB.prepare("INSERT INTO links (title, url, icon, description, sort_order) VALUES (?, ?, ?, ?, ?)")
-    .bind(body.title, body.url, body.icon, body.description, body.sort_order || 0).run()
+  await c.env.DB.prepare("INSERT INTO links (title, url, icon, description, sort_order, tag) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(body.title, body.url, body.icon, body.description, body.sort_order||0, body.tag).run()
   return c.redirect('/admin')
 })
 app.post('/api/links/update', async (c) => {
-  if (getCookie(c, 'auth') !== 'true') return c.redirect('/admin')
+  if (getCookie(c,'auth')!=='true')return c.redirect('/admin')
   const body = await c.req.parseBody()
-  await c.env.DB.prepare("UPDATE links SET title=?, url=?, icon=?, description=?, sort_order=? WHERE id=?")
-    .bind(body.title, body.url, body.icon, body.description, body.sort_order, body.id).run()
+  await c.env.DB.prepare("UPDATE links SET title=?, url=?, icon=?, description=?, sort_order=?, tag=? WHERE id=?")
+    .bind(body.title, body.url, body.icon, body.description, body.sort_order, body.tag, body.id).run()
   return c.redirect('/admin')
 })
-app.post('/api/links/update_order', async (c) => {
-  if (getCookie(c, 'auth') !== 'true') return c.redirect('/admin')
-  const body = await c.req.parseBody(); await c.env.DB.prepare("UPDATE links SET sort_order = ? WHERE id = ?").bind(body.sort_order, body.id).run(); return c.redirect('/admin')
-})
-app.post('/api/links/delete', async (c) => {
-  if (getCookie(c, 'auth') !== 'true') return c.redirect('/admin')
-  const body = await c.req.parseBody(); await c.env.DB.prepare("DELETE FROM links WHERE id = ?").bind(body.id).run(); return c.redirect('/admin')
-})
+app.post('/api/links/update_order', async (c) => {if(getCookie(c,'auth')!=='true')return c.redirect('/admin');const b=await c.req.parseBody();await c.env.DB.prepare("UPDATE links SET sort_order=? WHERE id=?").bind(b.sort_order,b.id).run();return c.redirect('/admin')})
+app.post('/api/links/delete', async (c) => {if(getCookie(c,'auth')!=='true')return c.redirect('/admin');const b=await c.req.parseBody();await c.env.DB.prepare("DELETE FROM links WHERE id=?").bind(b.id).run();return c.redirect('/admin')})
 
 export const onRequest = handle(app)
