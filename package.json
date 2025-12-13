@@ -1,6 +1,6 @@
 {
   "name": "lx-profile",
-  "version": "28.0.0",
+  "version": "29.0.0",
   "description": "An ultra-fast, zero-dependency personal profile site optimized for China mainland access.",
   "private": true,
   "scripts": {
