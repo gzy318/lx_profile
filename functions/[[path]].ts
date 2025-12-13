@@ -1,5 +1,5 @@
 /**
- * LX Profile - V28.1 (Dark Mode Fixed Edition)
+ * LX Profile - V29.0 (Dark Mode Fixed Edition)
  * 1. 修复：前台黑暗模式切换按钮点击无反应的问题 (函数名统一为 toggleTheme)。
  * 2. 优化：黑暗模式状态持久化 (localStorage)，刷新页面保持状态。
  * 3. 保持：V28 的所有高颜值 UI 和 SSR 极速性能。
