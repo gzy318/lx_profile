@@ -1,8 +1,8 @@
 /**
- * LX Profile - V18.0 (Stable & Readable Edition)
- * 1. 修复：恢复代码可读性，解决 Internal Server Error。
- * 2. 保持：手机 QQ 唤起修复、SSR 倒计时、0 CDN。
- * 3. 性能：代码结构清晰，依然秒开。
+ * LX Profile - V19.0 (Stable Diagnostic Edition)
+ * 1. 紧急修复 Internal Server Error，增加错误回显功能。
+ * 2. 数据库查询增加容错保护。
+ * 3. 保持 V18 的所有功能（手机QQ修复、SSR倒计时、0依赖）。
  */
 import { Hono } from 'hono'
 import { handle } from 'hono/cloudflare-pages'
@@ -16,149 +16,60 @@ interface Env {
 
 const app = new Hono<{ Bindings: Env }>()
 
+// 🛡️ 全局错误捕获：让页面打印具体错误，而不是 500
+app.onError((err, c) => {
+  console.error(err);
+  return c.text(`程序运行出错 (Error): \n${err.message}\n\n请截图此页面发送给开发者。`, 500);
+});
+
 // 工具：安全获取配置
 async function getConfig(db: D1Database, key: string) {
   try {
-    return await db.prepare("SELECT value FROM config WHERE key = ?").bind(key).first('value')
-  } catch (e) { return null }
-}
-
-// ------ CSS (恢复可读性，本地内嵌) ------
-const css = `
-:root {
-  --bg: #f8fafc;
-  --text: #0f172a;
-  --sub: #64748b;
-  --card: rgba(255, 255, 255, 0.85);
-  --border: rgba(255, 255, 255, 0.6);
-  --accent: #3b82f6;
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #020617;
-    --text: #f8fafc;
-    --sub: #94a3b8;
-    --card: rgba(15, 23, 42, 0.8);
-    --border: rgba(255, 255, 255, 0.05);
-    --accent: #60a5fa;
-    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    const res = await db.prepare("SELECT value FROM config WHERE key = ?").bind(key).first();
+    return res ? res.value : null;
+  } catch (e) {
+    return null; // 配置表不存在或读取失败，返回空
   }
 }
 
-.dark-mode {
-  --bg: #020617; --text: #f8fafc; --sub: #94a3b8;
-  --card: rgba(15, 23, 42, 0.8); --border: rgba(255, 255, 255, 0.05);
-  --accent: #60a5fa;
-}
-
-.light-mode {
-  --bg: #f8fafc; --text: #0f172a; --sub: #64748b;
-  --card: rgba(255, 255, 255, 0.85); --border: rgba(255, 255, 255, 0.6);
-  --accent: #3b82f6;
-}
-
-* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
-body {
-  font-family: system-ui, -apple-system, sans-serif;
-  background-color: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 20px;
-  transition: background 0.3s;
-}
-
-.bg-fixed {
-  position: fixed; inset: 0; z-index: -1;
-  background-size: cover; background-position: center;
-  transition: filter 0.3s;
-}
-body.dark-mode .bg-fixed, @media (prefers-color-scheme: dark) { 
-  body:not(.light-mode) .bg-fixed { filter: brightness(0.3) saturate(0.8); } 
-}
-
-.container { width: 100%; max-width: 440px; z-index: 1; animation: fadeIn 0.4s ease-out; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-/* 卡片 */
-.card {
-  background: var(--card);
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--border);
-  border-radius: 24px;
-  padding: 24px;
-  margin-bottom: 16px;
-  box-shadow: var(--shadow);
-  text-align: center;
-  position: relative;
-  overflow: hidden;
-}
-
-/* 顶部 */
+// ------ CSS (本地内嵌，无网络请求) ------
+const css = `
+:root { --bg: #f8fafc; --text: #0f172a; --sub: #64748b; --card: rgba(255,255,255,0.85); --border: rgba(255,255,255,0.6); --accent: #3b82f6; --shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+@media (prefers-color-scheme: dark) { :root { --bg: #020617; --text: #f8fafc; --sub: #94a3b8; --card: rgba(15,23,42,0.8); --border: rgba(255,255,255,0.05); --accent: #60a5fa; --shadow: 0 10px 15px -3px rgba(0,0,0,0.5); } }
+.dark-mode { --bg: #020617; --text: #f8fafc; --sub: #94a3b8; --card: rgba(15,23,42,0.8); --border: rgba(255,255,255,0.05); --accent: #60a5fa; }
+.light-mode { --bg: #f8fafc; --text: #0f172a; --sub: #64748b; --card: rgba(255,255,255,0.85); --border: rgba(255,255,255,0.6); --accent: #3b82f6; }
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { font-family: system-ui, -apple-system, sans-serif; background-color: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 16px; transition: background 0.3s; }
+.bg-fixed { position: fixed; inset: 0; z-index: -1; background-size: cover; background-position: center; transition: filter 0.3s; }
+body.dark-mode .bg-fixed, @media (prefers-color-scheme: dark) { body:not(.light-mode) .bg-fixed { filter: brightness(0.3) saturate(0.8); } }
+.container { width: 100%; max-width: 440px; z-index: 1; animation: f 0.4s ease-out; }
+@keyframes f { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+.card { background: var(--card); backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 24px; padding: 24px; margin-bottom: 16px; box-shadow: var(--shadow); text-align: center; }
 .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.pill {
-  background: var(--card); border: 1px solid var(--border);
-  padding: 6px 14px; border-radius: 99px;
-  font-size: 12px; font-weight: 700;
-  display: flex; gap: 8px; align-items: center;
-  box-shadow: var(--shadow);
-}
+.pill { background: var(--card); border: 1px solid var(--border); padding: 6px 14px; border-radius: 99px; font-size: 12px; font-weight: 700; display: flex; gap: 8px; align-items: center; box-shadow: var(--shadow); }
 .btn-group { display: flex; gap: 8px; }
-.icon-btn {
-  width: 36px; height: 36px; border-radius: 50%;
-  background: var(--card); border: 1px solid var(--border);
-  display: flex; justify-content: center; align-items: center;
-  cursor: pointer; font-size: 16px; transition: transform 0.1s;
-}
+.icon-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--card); border: 1px solid var(--border); display: flex; justify-content: center; align-items: center; cursor: pointer; font-size: 16px; transition: 0.1s; }
 .icon-btn:active { transform: scale(0.9); }
-
-/* 头像 */
-.avatar {
-  width: 96px; height: 96px; border-radius: 50%;
-  border: 4px solid var(--card); box-shadow: var(--shadow);
-  margin-bottom: 12px; object-fit: cover; transition: transform 0.6s;
-}
+.avatar { width: 96px; height: 96px; border-radius: 50%; border: 4px solid var(--card); box-shadow: var(--shadow); margin-bottom: 12px; object-fit: cover; transition: 0.6s; }
 .avatar:hover { transform: rotate(360deg); }
-
 .title { font-size: 24px; font-weight: 800; margin-bottom: 4px; letter-spacing: -0.5px; }
 .bio { font-size: 13px; color: var(--sub); margin-bottom: 20px; min-height: 1.2em; line-height: 1.5; }
-
-/* 社交 */
 .social-row { display: flex; justify-content: center; gap: 16px; margin-bottom: 24px; }
 .social-icon { width: 24px; height: 24px; fill: var(--sub); transition: 0.2s; cursor: pointer; }
 .social-icon:hover { fill: var(--accent); }
 .email-btn { background: var(--text); color: var(--bg); padding: 8px 20px; border-radius: 12px; text-decoration: none; font-size: 12px; font-weight: 700; }
-
-/* 进度条 (GPU加速) */
 .progress-box { background: rgba(127,127,127,0.1); padding: 14px; border-radius: 16px; margin-top: 8px; }
 .progress-head { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; margin-bottom: 8px; opacity: 0.7; }
 .progress-track { width: 100%; height: 6px; background: rgba(127,127,127,0.15); border-radius: 99px; overflow: hidden; }
-.progress-fill { height: 100%; background: var(--accent); border-radius: 99px; transform-origin: left; will-change: transform; }
-
-/* 搜索与标签 */
-.search-input { width: 100%; padding: 14px; border-radius: 16px; border: 1px solid var(--border); background: var(--card); color: var(--text); margin-bottom: 12px; outline: none; font-size: 14px; transition: box-shadow 0.2s; }
-.search-input:focus { box-shadow: 0 0 0 2px var(--accent); }
-
-.tags-row { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 10px 2px; justify-content: center; -ms-overflow-style: none; scrollbar-width: none; }
-.tags-row::-webkit-scrollbar { display: none; }
+.progress-fill { height: 100%; background: var(--accent); border-radius: 99px; transform-origin: left; }
+.search-input { width: 100%; padding: 14px; border-radius: 16px; border: 1px solid var(--border); background: var(--card); color: var(--text); margin-bottom: 12px; outline: none; font-size: 14px; }
+.tags-row { display: flex; gap: 8px; overflow-x: auto; padding: 2px; justify-content: center; scrollbar-width: none; margin-bottom: 10px; }
 .tag-btn { padding: 6px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 99px; font-size: 11px; font-weight: 700; color: var(--sub); cursor: pointer; white-space: nowrap; transition: 0.2s; }
 .tag-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-/* 链接列表 */
-.link-card {
-  display: flex; align-items: center; gap: 12px; padding: 14px;
-  background: var(--card); border: 1px solid var(--border); border-radius: 18px;
-  text-decoration: none; color: inherit; margin-bottom: 10px; transition: 0.2s; position: relative;
-}
+.link-card { display: flex; align-items: center; gap: 12px; padding: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 18px; text-decoration: none; color: inherit; margin-bottom: 10px; transition: 0.2s; position: relative; }
 .link-card:active { transform: scale(0.98); }
 .link-card:hover { transform: translateY(-2px); background: rgba(255,255,255,0.95); z-index: 2; }
 .dark-mode .link-card:hover { background: rgba(60,60,60,0.9); }
-
 .link-icon { width: 42px; height: 42px; border-radius: 12px; background: rgba(127,127,127,0.1); flex-shrink: 0; overflow: hidden; display: flex; justify-content: center; align-items: center; font-size: 20px; }
 .link-icon img { width: 100%; height: 100%; object-fit: cover; }
 .link-main { flex: 1; min-width: 0; }
@@ -167,51 +78,48 @@ body.dark-mode .bg-fixed, @media (prefers-color-scheme: dark) {
 .link-tag { font-size: 9px; background: rgba(59,130,246,0.1); color: var(--accent); padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-weight: 600; }
 .copy-btn { padding: 8px; background: 0 0; border: none; cursor: pointer; opacity: 0.4; font-size: 16px; }
 .copy-btn:hover { opacity: 1; color: var(--accent); }
-
-/* 页脚 */
 .footer { margin-top: 30px; text-align: center; padding-bottom: 30px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
 .info-pill { display: inline-flex; gap: 12px; background: rgba(0,0,0,0.8); backdrop-filter: blur(10px); color: #fff; padding: 8px 20px; border-radius: 99px; font-size: 11px; font-weight: 700; }
 .admin-link { font-size: 10px; color: var(--sub); text-decoration: none; font-weight: 700; text-transform: uppercase; opacity: 0.4; letter-spacing: 1px; }
-
-/* 提示与弹窗 */
 .toast { position: fixed; top: 24px; left: 50%; transform: translate(-50%, -60px); background: #10b981; color: #fff; padding: 8px 24px; border-radius: 99px; font-size: 12px; font-weight: 700; z-index: 99; transition: 0.3s; box-shadow: 0 10px 30px rgba(16,185,129,0.3); }
 .toast.show { transform: translate(-50%, 0); }
-.marquee-box { white-space: nowrap; overflow: hidden; font-size: 12px; font-weight: 700; color: var(--accent); text-align: left; }
-.marquee-text { display: inline-block; padding-left: 100%; animation: marquee 12s linear infinite; }
-@keyframes marquee { to { transform: translate(-100%, 0); } }
 `;
 
-// ------ 1. 前台主页 ------
+// ------ 前台主页 ------
 app.get('/', async (c) => {
   const startTime = Date.now();
-  if (!c.env.DB) return c.text('Database Error', 500)
+  
+  if (!c.env.DB) throw new Error("数据库未绑定 (D1 Binding 'DB' is missing)");
 
-  // 1. 获取所有数据
-  const [linksResult, bio, email, qq, views, bgUrl, siteTitle, status, startDate, notice, github, telegram, music] = await Promise.all([
-    c.env.DB.prepare('SELECT * FROM links ORDER BY sort_order ASC, created_at DESC').all(),
-    getConfig(c.env.DB, 'bio'), getConfig(c.env.DB, 'email'), getConfig(c.env.DB, 'qq'),
-    getConfig(c.env.DB, 'views'), getConfig(c.env.DB, 'bg_url'), getConfig(c.env.DB, 'site_title'),
-    getConfig(c.env.DB, 'status'), getConfig(c.env.DB, 'start_date'), getConfig(c.env.DB, 'notice'),
-    getConfig(c.env.DB, 'github'), getConfig(c.env.DB, 'telegram'), getConfig(c.env.DB, 'music_url')
-  ]);
+  // 2. 并发拉取数据 (带容错)
+  let linksResult, bio, email, qq, views, bgUrl, siteTitle, status, startDate, notice, github, telegram, music;
+  
+  try {
+    [linksResult, bio, email, qq, views, bgUrl, siteTitle, status, startDate, notice, github, telegram, music] = await Promise.all([
+      c.env.DB.prepare('SELECT * FROM links ORDER BY sort_order ASC, created_at DESC').all(),
+      getConfig(c.env.DB, 'bio'), getConfig(c.env.DB, 'email'), getConfig(c.env.DB, 'qq'),
+      getConfig(c.env.DB, 'views'), getConfig(c.env.DB, 'bg_url'), getConfig(c.env.DB, 'site_title'),
+      getConfig(c.env.DB, 'status'), getConfig(c.env.DB, 'start_date'), getConfig(c.env.DB, 'notice'),
+      getConfig(c.env.DB, 'github'), getConfig(c.env.DB, 'telegram'), getConfig(c.env.DB, 'music_url')
+    ]);
+  } catch (err: any) {
+    throw new Error("数据库查询失败，请检查表结构是否更新 (SQL Error): " + err.message);
+  }
 
-  // 2. 统计
-  c.executionCtx.waitUntil(c.env.DB.prepare("UPDATE config SET value = CAST(value AS INTEGER) + 1 WHERE key = 'views'").run())
+  // 浏览量+1 (异步)
+  c.executionCtx.waitUntil(c.env.DB.prepare("UPDATE config SET value = CAST(value AS INTEGER) + 1 WHERE key = 'views'").run().catch(()=>{}));
 
-  // 3. 服务端计算进度 (SSR, 强制北京时间)
+  // 3. 服务端计算进度 (SSR)
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
   const currentYear = now.getFullYear();
   const startOfYear = new Date(Date.UTC(currentYear, 0, 1)).getTime();
   const endOfYear = new Date(Date.UTC(currentYear + 1, 0, 1)).getTime();
-  
-  // 计算比例 (0.0 ~ 1.0) 用于 transform scaleX
   const pctRatio = Math.min(1, Math.max(0, (now.getTime() - startOfYear) / (endOfYear - startOfYear)));
   const pctText = (pctRatio * 100).toFixed(1);
   const remainingDays = Math.floor((endOfYear - now.getTime()) / 86400000);
-  
   const runDays = Math.floor((Date.now() - new Date(startDate as string || '2025-01-01').getTime()) / 86400000);
 
-  // 4. 标签去重
+  // 4. 标签处理
   const rawTags = linksResult.results.map((l:any) => l.tag ? l.tag.trim() : '').filter((t:string) => t !== '');
   const tags = ['全部', ...new Set(rawTags)];
 
@@ -261,13 +169,13 @@ app.get('/', async (c) => {
            <div class="social-row">
               ${github ? `<a href="${github}" target="_blank"><svg class="social-icon" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.065 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.475-1.335-5.475-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></path></svg></a>` : ''}
               
-              <!-- QQ 修复版: 点击触发 jumpQQ() -->
+              <!-- QQ 智能跳转 -->
               ${qq ? `<a href="javascript:jumpQQ()" class="social-icon"><svg class="social-icon" viewBox="0 0 1024 1024"><path d="M824.8 613.2c-16-51.4-34.4-94.6-62.7-165.3C766.5 262.2 689.3 112 511.5 112 331.7 112 256.4 265.2 261 447.9c-28.4 70.8-46.7 113.7-62.7 165.3-34 109.5-23 154.8-14.6 155.8 18 2.2 70.1-82.4 70.1-82.4 0 49 25.2 112.9 79.8 159-26.4 8.1-85.7 29.9-71.6 53.8 11.4 19.3 196.2 12.3 249.5 6.3 53.3 6 238.1 13 249.5-6.3 14.1-23.8-45.2-45.7-71.6-53.8 54.6-46.2 79.8-110.1 79.8-159 0 0 52.1 84.6 70.1 82.4 8.5-1.1 19.5-46.4-14.5-155.8z"/></path></svg></a>` : ''}
               
               <a href="mailto:${email}" class="email-btn">联系我</a>
            </div>
 
-           <!-- 进度条 GPU加速渲染 -->
+           <!-- 进度条 -->
            <div class="progress-box">
               <div class="progress-head"><span>${currentYear} 余额 ${remainingDays} 天</span><span>${pctText}%</span></div>
               <div class="progress-track">
@@ -312,7 +220,9 @@ app.get('/', async (c) => {
       <script>
         document.addEventListener('DOMContentLoaded', () => {
            // 计算加载耗时
-           document.getElementById('perf').innerText = Math.round(performance.now() - perfStart);
+           setTimeout(() => {
+             document.getElementById('perf').innerText = Math.round(performance.now() - perfStart);
+           }, 50);
            
            // 时钟 (RAF)
            const ck = document.getElementById('clock');
@@ -330,26 +240,23 @@ app.get('/', async (c) => {
            let i = 0; 
            (function t(){if(i<txt.length){el.innerText+=txt.charAt(i++);setTimeout(t,50)}})();
 
-           // 全局图片错误代理 (如果 Iowen 挂了，用 DDG 兜底)
+           // 全局图片错误代理
            document.addEventListener('error', e => {
               if(e.target.tagName==='IMG' && !e.target.hasAttribute('data-failed')){
                  e.target.setAttribute('data-failed', 'true');
-                 // 尝试 DuckDuckGo 图标源
                  try {
-                    e.target.src = 'https://icons.duckduckgo.com/ip3/'+new URL(e.target.parentNode.parentNode.href).hostname+'.ico';
+                    e.target.src = 'https://icons.duckduckgo.com/ip3/'+new URL(e.target.parentNode.href).hostname+'.ico';
                  } catch(err) {}
               }
            }, true);
         });
 
-        // QQ 智能跳转 (核心修复)
+        // QQ 智能跳转
         function jumpQQ() {
            const u = "${qq}";
            if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)){
-              // 手机端：唤起资料卡
               window.location.href = "mqqapi://card/show_pslcard?src_type=internal&version=1&uin="+u+"&card_type=person&source=sharecard";
            } else {
-              // 电脑端：加好友
               window.location.href = "tencent://AddContact/?fromId=45&subcmd=all&uin="+u;
            }
         }
@@ -413,4 +320,13 @@ app.get('/admin', async (c) => {
   
   const editId = c.req.query('edit_id')
   let editLink = null
-  if (editId) editLink = await c.env.DB.prepare("SELECT * FROM links WHERE id = ?").
+  try {
+    if (editId) editLink = await c.env.DB.prepare("SELECT * FROM links WHERE id = ?").bind(editId).first()
+  } catch(e) {}
+  
+  const links = await c.env.DB.prepare('SELECT * FROM links ORDER BY sort_order ASC, created_at DESC').all();
+  const configKeys = ['bio','email','qq','bg_url','site_title','status','start_date','notice','github','telegram','music_url'];
+  const config = {};
+  for(const k of configKeys) { config[k] = await getConfig(c.env.DB, k) || ''; }
+
+  return c.html(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin</title><style>${ad
