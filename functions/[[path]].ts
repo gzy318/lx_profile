@@ -1,89 +1,97 @@
 /**
- * LX Profile - V25.0 (Beautiful Admin & Extreme Frontend)
- * 1. 前端：保持 V24 极致性能 (0依赖, SSR倒计时, 手机QQ修复)。
- * 2. 后台：恢复高颜值 Dashboard UI (使用 Staticfile CDN 加速)。
- * 3. 修复：所有变量名健壮性检查。
+ * LX Profile - V26.0 (Local Aesthetic Admin Edition)
+ * 1. 前端：基于 V16.1 (性能最强版本)，保留 SSR 倒计时、手机 QQ 修复。
+ * 2. 后台：全新手写 CSS 美化 (无 CDN)，暗黑 Dashboard 风格。
+ * 3. 核心：0 外部依赖，中国大陆访问极速。
  */
 import { Hono } from 'hono'
 import { handle } from 'hono/cloudflare-pages'
 import { setCookie, getCookie } from 'hono/cookie'
 
-interface Env {
-  DB: D1Database;
-  BUCKET: R2Bucket;
-  ADMIN_PASSWORD?: string;
-}
-
+interface Env { DB: D1Database; BUCKET: R2Bucket; ADMIN_PASSWORD?: string; }
 const app = new Hono<{ Bindings: Env }>()
 
-// 错误回显
-app.onError((err, c) => {
-  return c.text(`Runtime Error: ${err.message}`, 500);
-});
-
 async function getConfig(db: D1Database, key: string) {
-  try {
-    const res = await db.prepare("SELECT value FROM config WHERE key = ?").bind(key).first();
-    // @ts-ignore
-    return res ? res.value : null;
-  } catch (e) { return null; }
+  try { return await db.prepare("SELECT value FROM config WHERE key = ?").bind(key).first('value') } catch (e) { return null }
 }
 
-// ------ 前端 CSS (0依赖, 本地内嵌) ------
-const css = `:root{--bg:#f8fafc;--tx:#0f172a;--sub:#64748b;--card:rgba(255,255,255,0.9);--bd:rgba(255,255,255,0.6);--ac:#3b82f6;--sh:0 4px 6px rgba(0,0,0,0.05)}@media(prefers-color-scheme:dark){:root{--bg:#020617;--tx:#f8fafc;--sub:#94a3b8;--card:rgba(15,23,42,0.8);--bd:rgba(255,255,255,0.1);--ac:#60a5fa;--sh:0 10px 15px rgba(0,0,0,0.5)}}.dark{--bg:#020617;--tx:#f8fafc;--sub:#94a3b8;--card:rgba(15,23,42,0.8);--bd:rgba(255,255,255,0.1);--ac:#60a5fa}.light{--bg:#f8fafc;--tx:#0f172a;--sub:#64748b;--card:rgba(255,255,255,0.9);--bd:rgba(255,255,255,0.6);--ac:#3b82f6}*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px;transition:0.3s}.bg{position:fixed;inset:0;z-index:-1;background-size:cover;background-position:center;transition:0.3s}body.dark .bg{filter:brightness(0.3)}.w{width:100%;max-width:440px;z-index:1;animation:f 0.4s ease-out}@keyframes f{from{opacity:0;translate:0 10px}to{opacity:1;translate:0 0}}.card{background:var(--card);backdrop-filter:blur(20px);border:1px solid var(--bd);border-radius:24px;padding:24px;margin-bottom:16px;box-shadow:var(--sh);text-align:center}.top{display:flex;justify-content:space-between;margin-bottom:12px}.pill{background:var(--card);border:1px solid var(--bd);padding:6px 14px;border-radius:99px;font-size:12px;font-weight:700;display:flex;gap:8px;align-items:center}.btn{width:36px;height:36px;border-radius:50%;background:var(--card);border:1px solid var(--bd);display:flex;justify-content:center;align-items:center;cursor:pointer;font-size:16px}.av{width:96px;height:96px;border-radius:50%;border:4px solid var(--card);box-shadow:var(--sh);margin-bottom:12px;object-fit:cover;transition:0.6s}.av:hover{rotate:360deg}.h1{font-size:24px;font-weight:800;margin-bottom:4px}.bio{font-size:13px;color:var(--sub);margin-bottom:20px;min-height:1.2em}.soc{display:flex;justify-content:center;gap:16px;margin-bottom:24px}.si{width:24px;height:24px;fill:var(--sub);transition:0.2s}.si:hover{fill:var(--ac)}.em{background:var(--tx);color:var(--bg);padding:8px 20px;border-radius:12px;text-decoration:none;font-size:12px;font-weight:700}.pb{background:rgba(127,127,127,0.1);padding:14px;border-radius:16px;margin-top:8px}.ph{display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:8px;opacity:0.7}.pt{width:100%;height:6px;background:rgba(127,127,127,0.15);border-radius:99px;overflow:hidden}.pf{height:100%;background:var(--ac);border-radius:99px;transform-origin:left}.ip{width:100%;padding:14px;border-radius:16px;border:1px solid var(--bd);background:var(--card);color:var(--tx);margin-bottom:12px;outline:0;font-size:14px}.ts{display:flex;gap:8px;overflow-x:auto;padding:2px;justify-content:center;scrollbar-width:none}.tg{padding:6px 14px;background:var(--card);border:1px solid var(--bd);border-radius:99px;font-size:11px;font-weight:700;color:var(--sub);cursor:pointer;white-space:nowrap;transition:0.2s}.tg.active{background:var(--ac);color:#fff;border-color:var(--ac)}.lnk{display:flex;align-items:center;gap:12px;padding:14px;background:var(--card);border:1px solid var(--bd);border-radius:18px;text-decoration:none;color:inherit;margin-bottom:10px;transition:0.2s}.lnk:active{scale:0.98}.lnk:hover{translate:0 -2px;background:rgba(255,255,255,0.95);z-index:2}.dark .lnk:hover{background:rgba(60,60,60,0.9)}.ic{width:42px;height:42px;border-radius:12px;background:rgba(127,127,127,0.1);flex-shrink:0;overflow:hidden;display:flex;justify-content:center;align-items:center;font-size:20px}.ic img{width:100%;height:100%;object-fit:cover}.mn{flex:1;min-width:0}.tt{font-size:14px;font-weight:700;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds{font-size:11px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bdg{font-size:9px;background:rgba(59,130,246,0.1);color:var(--ac);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:600}.cp{padding:8px;background:0 0;border:none;cursor:pointer;opacity:0.4}.cp:hover{opacity:1;color:var(--ac)}.ft{margin-top:30px;text-align:center;padding-bottom:30px}.fi{display:inline-flex;gap:12px;background:rgba(0,0,0,0.8);backdrop-filter:blur(10px);color:#fff;padding:8px 20px;border-radius:99px;font-size:11px;font-weight:700}.ad{font-size:10px;color:var(--sub);text-decoration:none;font-weight:700;text-transform:uppercase;opacity:0.4;display:block;margin-top:10px}.toast{position:fixed;top:24px;left:50%;translate:-50% -60px;background:#10b981;color:#fff;padding:8px 24px;border-radius:99px;font-size:12px;font-weight:700;z-index:99;transition:0.3s}
-.toast.s{translate:-50% 0}.mq{white-space:nowrap;overflow:hidden;font-size:12px;font-weight:700;color:var(--ac);text-align:left}.mq div{display:inline-block;padding-left:100%;animation:m 12s linear infinite}@keyframes m{to{translate:-100% 0}}`;
+// ------ 前端 CSS (V16.1 极致压缩版 - 保持不变) ------
+const frontCss = `:root{--bg:#f8fafc;--txt:#0f172a;--sub:#64748b;--cd:rgba(255,255,255,0.8);--bd:rgba(255,255,255,0.6);--ac:#3b82f6;--sh:0 4px 6px -1px rgba(0,0,0,0.05)}@media(prefers-color-scheme:dark){:root{--bg:#020617;--txt:#f8fafc;--sub:#94a3b8;--cd:rgba(15,23,42,0.8);--bd:rgba(255,255,255,0.05);--ac:#60a5fa;--sh:0 10px 15px -3px rgba(0,0,0,0.5)}}.dark{--bg:#020617;--txt:#f8fafc;--sub:#94a3b8;--cd:rgba(15,23,42,0.8);--bd:rgba(255,255,255,0.05);--ac:#60a5fa}.light{--bg:#f8fafc;--txt:#0f172a;--sub:#64748b;--cd:rgba(255,255,255,0.8);--bd:rgba(255,255,255,0.6);--ac:#3b82f6}*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px;transition:background 0.3s}.bg{position:fixed;inset:0;z-index:-1;background-size:cover;background-position:center;transition:filter 0.3s;will-change:filter}body.dark .bg{filter:brightness(0.3) saturate(0.8)}.box{width:100%;max-width:440px;z-index:1;animation:f 0.4s ease-out}@keyframes f{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}.cd{background:var(--cd);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--bd);border-radius:24px;padding:24px;margin-bottom:16px;box-shadow:var(--sh);text-align:center;position:relative;overflow:hidden}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.pill{background:var(--cd);border:1px solid var(--bd);padding:6px 14px;border-radius:99px;font-size:12px;font-weight:700;display:flex;gap:8px;align-items:center;box-shadow:var(--sh)}.btns{display:flex;gap:8px}.btn{width:36px;height:36px;border-radius:50%;background:var(--cd);border:1px solid var(--bd);display:flex;justify-content:center;align-items:center;cursor:pointer;font-size:16px;transition:transform 0.1s}.btn:active{transform:scale(0.9)}.ava{width:96px;height:96px;border-radius:50%;border:4px solid var(--cd);box-shadow:var(--sh);margin-bottom:12px;object-fit:cover;transition:transform 0.6s}.ava:hover{transform:rotate(360deg)}.h1{font-size:24px;font-weight:800;margin-bottom:4px;letter-spacing:-0.5px}.bio{font-size:13px;color:var(--sub);margin-bottom:20px;min-height:1.2em;line-height:1.5}.soc{display:flex;justify-content:center;gap:16px;margin-bottom:24px}.si{width:24px;height:24px;fill:var(--sub);transition:0.2s}.si:hover{fill:var(--ac)}.pg-box{background:rgba(127,127,127,0.1);padding:14px;border-radius:16px;margin-top:8px}.pg-hd{display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:8px;opacity:0.7}.pg-tk{width:100%;height:6px;background:rgba(127,127,127,0.15);border-radius:99px;overflow:hidden}.pg-fl{height:100%;background:var(--ac);border-radius:99px;transform-origin:left;will-change:transform}.sch{width:100%;padding:14px;border-radius:16px;border:1px solid var(--bd);background:var(--cd);color:var(--txt);margin-bottom:12px;outline:none;font-size:14px;transition:box-shadow 0.2s}.sch:focus{box-shadow:0 0 0 2px var(--ac)}.tgs{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 10px 2px;justify-content:center;-ms-overflow-style:none;scrollbar-width:none}.tgs::-webkit-scrollbar{display:none}.tg{padding:6px 14px;background:var(--cd);border:1px solid var(--bd);border-radius:99px;font-size:11px;font-weight:700;color:var(--sub);cursor:pointer;white-space:nowrap;transition:0.2s}.tg.act{background:var(--ac);color:#fff;border-color:var(--ac)}.lnk{display:flex;align-items:center;gap:12px;padding:14px;background:var(--cd);border:1px solid var(--bd);border-radius:18px;text-decoration:none;color:inherit;margin-bottom:10px;transition:0.2s;position:relative}.lnk:active{transform:scale(0.98)}.lnk:hover{transform:translateY(-2px);background:rgba(255,255,255,0.95);z-index:2}.dark .lnk:hover{background:rgba(60,60,60,0.9)}.ic{width:42px;height:42px;border-radius:12px;background:rgba(127,127,127,0.1);flex-shrink:0;overflow:hidden;display:flex;justify-content:center;align-items:center;font-size:20px}.ic img{width:100%;height:100%;object-fit:cover}.mn{flex:1;min-width:0}.tt{font-size:14px;font-weight:700;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds{font-size:11px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bdg{font-size:9px;background:rgba(59,130,246,0.1);color:var(--ac);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:600}.cp{padding:8px;background:0 0;border:none;cursor:pointer;opacity:0.4;font-size:16px}.cp:hover{opacity:1;color:var(--ac)}.ft{margin-top:30px;text-align:center;padding-bottom:30px;display:flex;flex-direction:column;gap:12px;align-items:center}.info{display:inline-flex;gap:12px;background:rgba(0,0,0,0.8);backdrop-filter:blur(10px);color:#fff;padding:8px 20px;border-radius:99px;font-size:11px;font-weight:700}.adm{font-size:10px;color:var(--sub);text-decoration:none;font-weight:700;text-transform:uppercase;opacity:0.4;letter-spacing:1px}.toast{position:fixed;top:24px;left:50%;translate:-50% -60px;background:#10b981;color:#fff;padding:8px 24px;border-radius:99px;font-size:12px;font-weight:700;z-index:99;transition:0.3s;box-shadow:0 10px 30px rgba(16,185,129,0.3)}.toast.s{translate:-50% 0}.mq{white-space:nowrap;overflow:hidden;font-size:12px;font-weight:700;color:var(--ac);text-align:left}.mq div{display:inline-block;padding-left:100%;animation:m 12s linear infinite}@keyframes m{to{translate:-100% 0}}`;
 
-// ------ 前端主页 ------
+// ------ 后台美化 CSS (纯手写，0 CDN) ------
+const adminCss = `
+:root { --bg:#0f172a; --card:#1e293b; --text:#e2e8f0; --border:#334155; --accent:#3b82f6; --danger:#ef4444; --input:#020617; }
+body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; min-height: 100vh; }
+.nav { background: rgba(30,41,59,0.8); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); padding: 15px 20px; position: sticky; top: 0; z-index: 10; display: flex; justify-content: space-between; align-items: center; }
+.logo { font-weight: 800; font-size: 18px; color: white; display: flex; align-items: center; gap: 8px; }
+.badge { background: var(--accent); color: white; font-size: 10px; padding: 2px 6px; border-radius: 4px; }
+.preview-btn { background: var(--input); border: 1px solid var(--border); color: var(--accent); text-decoration: none; font-size: 12px; font-weight: bold; padding: 6px 12px; border-radius: 6px; transition: 0.2s; }
+.preview-btn:hover { border-color: var(--accent); background: var(--card); }
+
+.container { max-width: 1000px; margin: 30px auto; padding: 0 20px; display: grid; grid-template-columns: 350px 1fr; gap: 24px; }
+@media (max-width: 768px) { .container { grid-template-columns: 1fr; } }
+
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); }
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+.card-title { font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; }
+
+.form-grid { display: grid; gap: 15px; }
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+.label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; }
+.input { background: var(--input); border: 1px solid var(--border); color: white; padding: 10px; border-radius: 8px; font-size: 13px; transition: 0.2s; outline: none; width: 100%; box-sizing: border-box; }
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }
+textarea.input { resize: vertical; min-height: 60px; }
+
+.btn { width: 100%; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; border: none; transition: 0.2s; }
+.btn-primary { background: var(--accent); color: white; box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
+.btn-primary:hover { background: #2563eb; transform: translateY(-1px); }
+.btn-danger { background: rgba(239,68,68,0.15); color: var(--danger); font-size: 12px; padding: 6px 12px; border-radius: 6px; }
+.btn-danger:hover { background: rgba(239,68,68,0.25); }
+.btn-edit { background: rgba(59,130,246,0.15); color: var(--accent); font-size: 12px; padding: 6px 12px; border-radius: 6px; text-decoration: none; }
+.btn-edit:hover { background: rgba(59,130,246,0.25); }
+
+.link-list { display: flex; flex-direction: column; gap: 2px; }
+.link-row { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid transparent; transition: 0.2s; }
+.link-row:hover { background: rgba(255,255,255,0.05); border-color: var(--border); }
+.sort-input { width: 40px; text-align: center; background: var(--bg); border: 1px solid var(--border); color: white; padding: 4px; border-radius: 4px; font-size: 12px; }
+.icon-box { width: 36px; height: 36px; background: var(--bg); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; border: 1px solid var(--border); overflow: hidden; flex-shrink: 0; }
+.link-details { flex: 1; min-width: 0; }
+.link-name { font-weight: bold; font-size: 13px; color: white; }
+.link-url { font-size: 11px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tag-badge { font-size: 10px; background: rgba(59,130,246,0.2); color: var(--accent); padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
+.login-box { max-width: 360px; margin: 100px auto; text-align: center; }
+.login-icon { font-size: 40px; margin-bottom: 20px; }
+`;
+
+// ------ 前端逻辑 (保持 V16.1 不变) ------
 app.get('/', async (c) => {
-  const startTime = Date.now();
-  if (!c.env.DB) return c.text('DB Not Bound', 500);
+  const t0 = Date.now();
+  if (!c.env.DB) return c.text('DB Error', 500)
+  
+  const [links, bio, email, qq, views, bgUrl, siteTitle, status, startDate, notice, github, telegram, music] = await Promise.all([
+    c.env.DB.prepare('SELECT * FROM links ORDER BY sort_order ASC, created_at DESC').all(),
+    getConfig(c.env.DB, 'bio'), getConfig(c.env.DB, 'email'), getConfig(c.env.DB, 'qq'),
+    getConfig(c.env.DB, 'views'), getConfig(c.env.DB, 'bg_url'), getConfig(c.env.DB, 'site_title'),
+    getConfig(c.env.DB, 'status'), getConfig(c.env.DB, 'start_date'), getConfig(c.env.DB, 'notice'),
+    getConfig(c.env.DB, 'github'), getConfig(c.env.DB, 'telegram'), getConfig(c.env.DB, 'music_url')
+  ]);
 
-  let linksResult = { results: [] };
-  let bio = '', email = '', qq = '', views = '0', bgUrl = '', siteTitle = 'LX Profile';
-  let status = 'online', startDate = '2025-01-01', notice = '';
-  let github = '', telegram = '', music = '';
-
-  try {
-    const [l, b, e, q, v, bg, st, stat, sd, nt, gh, tg, mu] = await Promise.all([
-      c.env.DB.prepare('SELECT * FROM links ORDER BY sort_order ASC, created_at DESC').all(),
-      getConfig(c.env.DB, 'bio'), getConfig(c.env.DB, 'email'), getConfig(c.env.DB, 'qq'),
-      getConfig(c.env.DB, 'views'), getConfig(c.env.DB, 'bg_url'), getConfig(c.env.DB, 'site_title'),
-      getConfig(c.env.DB, 'status'), getConfig(c.env.DB, 'start_date'), getConfig(c.env.DB, 'notice'),
-      getConfig(c.env.DB, 'github'), getConfig(c.env.DB, 'telegram'), getConfig(c.env.DB, 'music_url')
-    ]);
-    
-    // @ts-ignore
-    if(l) linksResult = l; 
-    // @ts-ignore
-    if(b) bio=b; if(e) email=e; if(q) qq=q; if(v) views=v; if(bg) bgUrl=bg;
-    // @ts-ignore
-    if(st) siteTitle=st; if(stat) status=stat; if(sd) startDate=sd; if(nt) notice=nt;
-    // @ts-ignore
-    if(gh) github=gh; if(tg) telegram=tg; if(mu) music=mu;
-
-  } catch (err: any) {
-    return c.text('Data Load Error', 500);
-  }
-
-  c.executionCtx.waitUntil(c.env.DB.prepare("UPDATE config SET value = CAST(value AS INTEGER) + 1 WHERE key = 'views'").run().catch(()=>{}));
-
+  c.executionCtx.waitUntil(c.env.DB.prepare("UPDATE config SET value = CAST(value AS INTEGER) + 1 WHERE key = 'views'").run());
+  
   // SSR 倒计时
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
   const yr = now.getFullYear();
   const start = new Date(Date.UTC(yr, 0, 1)).getTime();
   const end = new Date(Date.UTC(yr + 1, 0, 1)).getTime();
-  const pct = Math.min(1, Math.max(0, ((now.getTime() - start) / (end - start))));
-  const pctText = (pct * 100).toFixed(1);
-  const remainingDays = Math.floor((end - now.getTime()) / 86400000);
-  const runDays = Math.floor((Date.now() - new Date(startDate || '2025-01-01').getTime()) / 86400000);
+  const pctRatio = Math.min(1, Math.max(0, (now.getTime() - start) / (end - start)));
+  const pctText = (pctRatio * 100).toFixed(1);
+  const leftDays = Math.floor((end - now.getTime()) / 86400000);
+  const runDays = Math.floor((Date.now() - new Date(startDate as string || '2025-01-01').getTime()) / 86400000);
 
-  // @ts-ignore
-  const tags = ['全部', ...new Set(linksResult.results.map((l:any) => l.tag ? l.tag.trim() : '').filter((t:string) => t !== ''))];
-  const favicon = "https://twbk.cn/wp-content/uploads/2025/12/tx.png";
+  const tags = ['全部', ...new Set(links.results.map((l:any)=>l.tag?l.tag.trim():'').filter((t:string)=>t!==''))];
+  const fav = "https://twbk.cn/wp-content/uploads/2025/12/tx.png";
 
-  return c.html(`<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=0"><title>${siteTitle}</title><link rel="icon" href="${favicon}"><style>${css}</style><script>if(localStorage.theme==='dark'||(!('theme' in localStorage)&&window.matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark');const perfStart = performance.now();</script></head><body><div class="bg" style="${bgUrl?`background-image:url('${bgUrl}')`:'background-color:#f8fafc'}"></div><div class="w"><div class="top"><div class="pill"><span id="ck">00:00:00</span><span style="opacity:0.2">|</span><span>CN</span></div><div style="display:flex;gap:8px">${music?`<button class="btn" onclick="pm()" id="mb">🎵<audio id="au" loop></audio></button>`:''}<button class="btn" onclick="tm()">🌗</button></div></div>${notice?`<div class="card" style="padding:10px 16px;border-left:4px solid var(--ac);text-align:left"><div class="mq"><div>🔔 ${notice}</div></div></div>`:''}<div class="card"><img src="/avatar" onerror="this.src='${favicon}'" class="avatar" fetchpriority="high"><h1 class="h1">${siteTitle}</h1><p class="bio" id="bio"></p><div class="soc">${github?`<a href="${github}" target="_blank"><svg class="si" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.065 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.475-1.335-5.475-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></path></svg></a>`:''}${qq?`<a href="javascript:qj()" class="si"><svg class="si" viewBox="0 0 1024 1024"><path d="M824.8 613.2c-16-51.4-34.4-94.6-62.7-165.3C766.5 262.2 689.3 112 511.5 112 331.7 112 256.4 265.2 261 447.9c-28.4 70.8-46.7 113.7-62.7 165.3-34 109.5-23 154.8-14.6 155.8 18 2.2 70.1-82.4 70.1-82.4 0 49 25.2 112.9 79.8 159-26.4 8.1-85.7 29.9-71.6 53.8 11.4 19.3 196.2 12.3 249.5 6.3 53.3 6 238.1 13 249.5-6.3 14.1-23.8-45.2-45.7-71.6-53.8 54.6-46.2 79.8-110.1 79.8-159 0 0 52.1 84.6 70.1 82.4 8.5-1.1 19.5-46.4-14.5-155.8z"/></path></svg></a>`:''}<a href="mailto:${email}" class="email-btn">联系我</a></div><div class="pb"><div class="ph"><span>${yr} 余额 ${remainingDays} 天</span><span>${pctText}%</span></div><div class="pt"><div class="pf" style="transform:scaleX(${pct})"></div></div></div></div><div class="tags">${tags.map((t:string) => `<div class="tag ${t==='全部'?'active':''}" onclick="filter('${t}',this)">${t}</div>`).join('')}</div><input id="search" class="inp" placeholder="🔍 搜索..." onkeyup="sr(this.value)"><div id="list">${
-    // @ts-ignore
-    linksResult.results.map((l:any) => `<a href="${l.url}" target="_blank" class="lnk" data-tag="${l.tag||''}" data-s="${l.title} ${l.description}"><div class="ic">${!l.icon ? `<img src="https://api.iowen.cn/favicon/${new URL(l.url).hostname}.png" loading="lazy">` : (l.icon.startsWith('http') ? `<img src="${l.icon}" loading="lazy">` : l.icon)}</div><div class="mn"><div class="tt">${l.title} ${l.tag?`<span class="bdg">${l.tag}</span>`:''}</div><div class="ds">${l.description||l.url}</div></div><button class="cp" onclick="cp('${l.url}',event)">📋</button></a>`).join('')}</div><div class="ft"><div class="fi"><span>👀 ${views}</span><span style="opacity:0.3">|</span><span>⏳ ${runDays} D</span><span style="opacity:0.3">|</span><span>⚡ <span id="perf">0</span>ms</span></div><a href="/admin" class="adm">Admin</a></div></div><div id="toast" class="toast">✅ 已复制</div><script>document.addEventListener('DOMContentLoaded', () => { setTimeout(() => { document.getElementById('perf').innerText = Math.round(performance.now() - perfStart); }, 50); const ck = document.getElementById('clock'); function tick(){ const d = new Date(); const b = new Date(d.getTime() + (d.getTimezoneOffset()*60000) + (3600000*8)); ck.innerText = b.getHours().toString().padStart(2,'0')+':'+b.getMinutes().toString().padStart(2,'0')+':'+b.getSeconds().toString().padStart(2,'0'); requestAnimationFrame(tick); } requestAnimationFrame(tick); const txt = "${bio || 'Hello'}"; const el = document.getElementById('bio'); let i = 0; (function t(){if(i<txt.length){el.innerText+=txt.charAt(i++);setTimeout(t,50)}})(); document.addEventListener('error', e => { if(e.target.tagName==='IMG' && !e.target.hasAttribute('d')){ e.target.setAttribute('d', 'true'); try { e.target.src = 'https://icons.duckduckgo.com/ip3/'+new URL(e.target.parentNode.href).hostname+'.ico'; } catch(err) {} } }, true); }); function qj() { const u = "${qq}"; if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)){ window.location.href = "mqqapi://card/show_pslcard?src_type=internal&version=1&uin="+u+"&card_type=person&source=sharecard"; } else { window.location.href = "tencent://AddContact/?fromId=45&subcmd=all&uin="+u; } } function filter(tag, btn) { document.querySelectorAll('.tag').forEach(x=>x.classList.remove('active')); btn.classList.add('active'); document.querySelectorAll('.lnk').forEach(l => { l.style.display = (tag==='全部'||l.dataset.tag===tag) ? 'flex' : 'none'; }); } function sr(v) { v = v.toLowerCase(); document.querySelectorAll('.lnk').forEach(l => { l.style.display = l.dataset.s.toLowerCase().includes(v) ? 'flex' : 'none'; }); } function cp(u, e) { e.preventDefault(); e.stopPropagation(); navigator.clipboard.writeText(u); const t = document.getElementById('toast'); t.classList.add('s'); setTimeout(() => t.classList.remove('s'), 2000); } function tm() { document.body.classList.toggle('dark'); document.body.classList.toggle('light'); } function pm() { const a = document.getElementById('au'); if(!a.src) a.src = "${music || ''}"; const b = document.getElementById('mb'); if(a.paused) { a.play(); b.style.transform = 'rotate(360deg)'; } else { a.pause(); b.style.transform = 'none'; } } </script></body></html>`)
+  return c.html(`<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=0"><title>${siteTitle || '主页'}</title><link rel="icon" href="${fav}"><style>${frontCss}</style><script>if(localStorage.theme==='dark'||(!('theme' in localStorage)&&window.matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark');const perfStart = performance.now();</script></head><body><div class="bg" style="${bgUrl ? `background-image: url('${bgUrl}');` : 'background-color:#f8fafc;'}"></div><div class="box"><div class="top"><div class="pill"><span id="ck">00:00:00</span><span style="opacity:0.2">|</span><span>CN</span></div><div class="btns">${music ? `<button class="btn" onclick="playMusic()" id="mb">🎵<audio id="au" loop></audio></button>` : ''}<button class="btn" onclick="theme()">🌗</button></div></div>${notice ? `<div class="cd" style="padding:10px 16px;border-left:4px solid var(--ac);color:var(--ac);font-weight:700;font-size:12px;text-align:left"><div class="mq"><div>🔔 ${notice}</div></div></div>` : ''}<div class="cd"><img src="/avatar" onerror="this.src='${fav}'" class="ava" fetchpriority="high"><h1 class="h1">${siteTitle}</h1><p class="bio" id="bio"></p><div class="soc">${github ? `<a href="${github}" target="_blank"><svg class="si" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.065 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.475-1.335-5.475-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></path></svg></a>` : ''}${qq ? `<a href="javascript:jumpQQ()" class="si"><svg class="si" viewBox="0 0 1024 1024"><path d="M824.8 613.2c-16-51.4-34.4-94.6-62.7-165.3C766.5 262.2 689.3 112 511.5 112 331.7 112 256.4 265.2 261 447.9c-28.4 70.8-46.7 113.7-62.7 165.3-34 109.5-23 154.8-14.6 155.8 18 2.2 70.1-82.4 70.1-82.4 0 49 25.2 112.9 79.8 159-26.4 8.1-85.7 29.9-71.6 53.8 11.4 19.3 196.2 12.3 249.5 6.3 53.3 6 238.1 13 249.5-6.3 14.1-23.8-45.2-45.7-71.6-53.8 54.6-46.2 79.8-110.1 79.8-159 0 0 52.1 84.6 70.1 82.4 8.5-1.1 19.5-46.4-14.5-155.8z"/></path></svg></a>` : ''}<a href="mailto:${email}" class="em">联系我</a></div><div class="pg-box"><div class="pg-hd"><span>${yr} 余额 ${leftDays} 天</span><span>${pctText}%</span></div><div class="pg-tk"><div class="pg-fl" style="transform: scaleX(${pctRatio})"></div></div></div></div><div class="tgs">${tags.map((t:string) => `<div class="tg ${t==='全部'?'act':''}" onclick="filter('${t}',this)">${t}</div>`).join('')}</div><input id="sch" class="sch" placeholder="🔍 搜索..." onkeyup="search(this.value)"><div id="lst">${links.results.map((l:any) => `<a href="${l.url}" target="_blank" class="lnk" data-t="${l.tag||''}" data-s="${l.title} ${l.description}"><div class="ic">${!l.icon ? `<img src="https://api.iowen.cn/favicon/${new URL(l.url).hostname}.png" loading="lazy">` : (l.icon.startsWith('http') ? `<img src="${l.icon}" loading="lazy">` : l.icon)}</div><div class="mn"><div class="tt">${l.title} ${l.tag?`<span class="bdg">${l.tag}</span>`:''}</div><div class="ds">${l.description||l.url}</div></div><button class="cp" onclick="copy('${l.url}',event)">📋</button></a>`).join('')}</div><div class="ft"><div class="info"><span>👀 ${views}</span><span style="opacity:0.3">|</span><span>⏳ ${runDays} D</span><span style="opacity:0.3">|</span><span>⚡ <span id="perf">0</span>ms</span></div><div><a href="/admin" class="adm">Admin</a></div></div></div><div id="toast" class="toast">✅ 已复制</div><script>document.addEventListener('DOMContentLoaded', () => { setTimeout(() => { document.getElementById('perf').innerText = Math.round(performance.now() - perfStart); }, 50); const ck = document.getElementById('clock'); function tick(){ const d = new Date(); const b = new Date(d.getTime() + (d.getTimezoneOffset()*60000) + (3600000*8)); ck.innerText = b.getHours().toString().padStart(2,'0')+':'+b.getMinutes().toString().padStart(2,'0')+':'+b.getSeconds().toString().padStart(2,'0'); requestAnimationFrame(tick); } requestAnimationFrame(tick); const txt = "${bio || 'Hello'}"; const el = document.getElementById('bio'); let i = 0; (function t(){if(i<txt.length){el.innerText+=txt.charAt(i++);setTimeout(t,50)}})(); document.addEventListener('error', e => { if(e.target.tagName==='IMG' && !e.target.hasAttribute('d')){ e.target.setAttribute('d', 'true'); try { e.target.src = 'https://icons.duckduckgo.com/ip3/'+new URL(e.target.parentNode.href).hostname+'.ico'; } catch(err) {} } }, true); }); function qj() { const u = "${qq}"; if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)){ window.location.href = "mqqapi://card/show_pslcard?src_type=internal&version=1&uin="+u+"&card_type=person&source=sharecard"; } else { window.location.href = "tencent://AddContact/?fromId=45&subcmd=all&uin="+u; } } function filter(tag, btn) { document.querySelectorAll('.tg').forEach(x=>x.classList.remove('act')); btn.classList.add('active'); document.querySelectorAll('.lnk').forEach(l => { l.style.display = (tag==='全部'||l.dataset.tag===tag) ? 'flex' : 'none'; }); } function search(v) { v = v.toLowerCase(); document.querySelectorAll('.lnk').forEach(l => { l.style.display = l.dataset.s.toLowerCase().includes(v) ? 'flex' : 'none'; }); } function copy(u, e) { e.preventDefault(); e.stopPropagation(); navigator.clipboard.writeText(u); const t = document.getElementById('toast'); t.classList.add('s'); setTimeout(() => t.classList.remove('s'), 2000); } function toggleTheme() { document.body.classList.toggle('dark'); document.body.classList.toggle('light'); } function playMusic() { const a = document.getElementById('au'); if(!a.src) a.src = "${music || ''}"; const b = document.getElementById('mb'); if(a.paused) { a.play(); b.style.transform = 'rotate(360deg)'; } else { a.pause(); b.style.transform = 'none'; } } </script></body></html>`)
 })
 
 app.get('/avatar', async (c) => {
@@ -93,28 +101,106 @@ app.get('/avatar', async (c) => {
   return o ? new Response(o.body, {headers:{'etag':o.httpEtag}}) : c.redirect(f)
 })
 
-// ------ 后台管理 (回滚到美观版) ------
+// ------ 后台管理 (V26.0 新版美化 UI) ------
 app.get('/admin', async (c) => {
   const cookie = getCookie(c, 'auth')
-  // 登录页：高颜值磨砂卡片 (引入 Staticfile CDN 加速 Tailwind)
-  if (cookie !== 'true') return c.html(`<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LX Admin</title><script src="https://cdn.staticfile.org/tailwindcss/3.3.5/tailwind.js"></script></head><body class="bg-slate-900 flex items-center justify-center min-h-screen"><div class="w-full max-w-sm p-8 bg-slate-800/50 backdrop-blur-xl border border-slate-700 rounded-3xl shadow-2xl"><div class="text-center mb-8"><div class="w-16 h-16 bg-blue-600 rounded-2xl mx-auto mb-4 flex items-center justify-center text-3xl shadow-lg shadow-blue-500/30">🔐</div><h1 class="text-2xl font-bold text-white">LX Admin</h1></div><form action="/api/login" method="post" class="space-y-6"><input type="password" name="password" required class="w-full bg-slate-950 border border-slate-700 text-white px-4 py-3 rounded-xl focus:outline-none focus:border-blue-500 transition text-center tracking-widest placeholder-slate-600" placeholder="Passcode"><button class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-blue-600/20">Login</button></form><div class="mt-8 text-center"><a href="/" class="text-xs text-slate-500 hover:text-white transition">Back to Home</a></div></div></body></html>`)
+  if (cookie !== 'true') return c.html(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${adminCss}</style></head><body><div class="login-box"><div class="login-icon">🔐</div><div class="card"><form action="/api/login" method="post"><h2 style="margin-bottom:20px;color:#e2e8f0;">LX Admin Login</h2><input class="input" name="password" type="password" placeholder="Passcode" style="text-align:center"><button class="btn btn-primary" style="margin-top:15px">Unlock</button></form></div><a href="/" class="admin-link">Back to Home</a></div></body></html>`)
   
   const editId = c.req.query('edit_id')
   let editLink = null
   try { if (editId) editLink = await c.env.DB.prepare("SELECT * FROM links WHERE id = ?").bind(editId).first() } catch(e) {}
   
-  // @ts-ignore
-  let linksResult = { results: [] };
-  try { linksResult = await c.env.DB.prepare('SELECT * FROM links ORDER BY sort_order ASC, created_at DESC').all() } catch(e) {}
-
+  const links = await c.env.DB.prepare('SELECT * FROM links ORDER BY sort_order ASC, created_at DESC').all();
   const configKeys = ['bio','email','qq','bg_url','site_title','status','start_date','notice','github','telegram','music_url'];
-  const config: any = {};
+  const config = {};
   for(const k of configKeys) { config[k] = await getConfig(c.env.DB, k) || ''; }
 
-  // 后台页：美观 Dashboard
-  return c.html(`<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin Dashboard</title><script src="https://cdn.staticfile.org/tailwindcss/3.3.5/tailwind.js"></script><style>.input-dark{background:#0f172a;border:1px solid #334155;color:white}.input-dark:focus{border-color:#3b82f6;outline:none}</style></head><body class="bg-slate-950 text-slate-300 min-h-screen"><nav class="bg-slate-900/80 backdrop-blur border-b border-slate-800 px-6 py-4 flex justify-between items-center sticky top-0 z-50"><div class="flex items-center gap-3"><div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold shadow-lg shadow-blue-600/20">LX</div><h1 class="font-bold text-white">Dashboard <span class="text-xs bg-blue-900 text-blue-300 px-1.5 py-0.5 rounded ml-1">V25</span></h1></div><a href="/" target="_blank" class="text-sm font-bold text-blue-400 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 hover:border-blue-500 transition">Preview</a></nav><div class="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6"><div class="lg:col-span-4 space-y-6"><div class="bg-slate-900 rounded-2xl p-6 shadow-xl border border-slate-800"><h2 class="text-white font-bold mb-5 flex items-center gap-2 text-sm uppercase tracking-wider">⚙️ Config</h2><form action="/api/config" method="post" class="space-y-4">${Object.keys(config).map(k=>`<div><label class="text-[10px] font-bold text-slate-500 uppercase">${k}</label>${k==='bio'||k==='notice'?`<textarea name="${k}" rows="2" class="w-full input-dark p-2.5 rounded-lg text-sm mt-1">${config[k]}</textarea>`:`<input type="text" name="${k}" value="${config[k]}" class="w-full input-dark p-2.5 rounded-lg text-sm mt-1">`}</div>`).join('')}<button class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-900/50 transition mt-2">Save Config</button></form></div></div><div class="lg:col-span-8 space-y-6"><div class="bg-slate-900 rounded-2xl p-6 shadow-xl border border-slate-800 relative overflow-hidden group"><h2 class="text-white font-bold mb-5 flex justify-between items-center text-sm uppercase tracking-wider"><span>${editLink?'✏️ Edit Link':'✨ New Link'}</span>${editLink?'<a href="/admin" class="text-xs bg-red-500/10 text-red-400 px-3 py-1 rounded-full border border-red-500/20">Cancel</a>':''}</h2><form action="${editLink?'/api/links/update':'/api/links'}" method="post" class="space-y-4 relative z-10">${editLink?`<input type="hidden" name="id" value="${editLink.id}">`:''}<div class="grid md:grid-cols-2 gap-4"><input type="text" name="title" value="${editLink?.title||''}" class="w-full input-dark p-3 rounded-lg" required placeholder="Title"><input type="url" name="url" value="${editLink?.url||''}" class="w-full input-dark p-3 rounded-lg" required placeholder="URL"></div><div class="grid grid-cols-12 gap-4"><div class="col-span-2"><input type="number" name="sort_order" value="${editLink?.sort_order||0}" class="w-full input-dark p-3 rounded-lg text-center" placeholder="Sort"></div><div class="col-span-3"><input type="text" name="tag" value="${editLink?.tag||''}" class="w-full input-dark p-3 rounded-lg" placeholder="Tag"></div><div class="col-span-7"><input type="text" name="icon" value="${editLink?.icon||''}" class="w-full input-dark p-3 rounded-lg" placeholder="Icon (Emoji/URL)"></div></div><input type="text" name="description" value="${editLink?.description||''}" class="w-full input-dark p-3 rounded-lg" placeholder="Description"><button class="w-full ${editLink?'bg-indigo-600 hover:bg-indigo-500':'bg-emerald-600 hover:bg-emerald-500'} text-white font-bold py-3 rounded-xl transition shadow-lg">${editLink?'Update Link':'Add to List'}</button></form></div><div class="bg-slate-900 rounded-2xl shadow-xl border border-slate-800 overflow-hidden"><div class="p-4 bg-slate-800/50 border-b border-slate-800 flex justify-between items-center"><span class="font-bold text-white text-sm">Links (${linksResult.results.length})</span><span class="text-[10px] text-slate-500 bg-slate-950 px-2 py-1 rounded">Sort: 0-9</span></div><div class="divide-y divide-slate-800/50">${
-    // @ts-ignore
-    linksResult.results.map((l:any)=>`<div class="p-4 flex items-center gap-4 hover:bg-slate-800/30 transition group"><form action="/api/links/update_order" method="post"><input type="hidden" name="id" value="${l.id}"><input name="sort_order" value="${l.sort_order}" class="w-8 h-8 bg-slate-950 border border-slate-700 rounded text-center text-xs text-slate-400 focus:border-blue-500 outline-none" onchange="this.form.submit()"></form><div class="w-10 h-10 rounded-lg bg-slate-950 flex items-center justify-center overflow-hidden border border-slate-700/50">${!l.icon?'🔗':(l.icon.startsWith('http')?`<img src="${l.icon}" class="w-full h-full object-cover">`:l.icon)}</div><div class="flex-1 min-w-0"><div class="flex items-center gap-2"><span class="font-bold text-slate-200 truncate text-sm">${l.title}</span>${l.tag?`<span class="text-[9px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20">${l.tag}</span>`:''}</div><div class="text-[10px] text-slate-500 truncate font-mono mt-0.5">${l.url}</div></div><div class="flex items-center gap-2 opacity-100 lg:opacity-0 group-hover:opacity-100 transition"><a href="/admin?edit_id=${l.id}" class="p-2 bg-blue-500/10 text-blue-400 rounded-lg hover:bg-blue-600 hover:text-white transition">✏️</a><form action="/api/links/delete" method="post" onsubmit="return confirm('Delete?')"><input type="hidden" name="id" value="${l.id}"><button class="p-2 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-600 hover:text-white transition">🗑️</button></form></div></div>`).join('')}</div></div></div></div></body></html>`)
+  return c.html(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>LX Dashboard</title>
+      <style>${adminCss}</style>
+    </head>
+    <body>
+      <nav class="nav">
+         <div class="logo">LX Profile <span class="badge">V26</span></div>
+         <a href="/" target="_blank" class="preview-btn">Preview</a>
+      </nav>
+
+      <div class="container">
+         <!-- Config -->
+         <div class="sidebar">
+            <div class="card">
+               <div class="card-header"><span class="card-title">⚙️ Configuration</span></div>
+               <form action="/api/config" method="post" class="form-grid">
+                  ${Object.keys(config).map(k => `
+                    <div class="form-group">
+                       <label class="label">${k}</label>
+                       ${k === 'bio' || k === 'notice' 
+                         ? `<textarea class="input" name="${k}">${config[k]}</textarea>` 
+                         : `<input class="input" name="${k}" value="${config[k]}">`}
+                    </div>
+                  `).join('')}
+                  <button class="btn btn-primary">Save Changes</button>
+               </form>
+            </div>
+         </div>
+
+         <!-- Links -->
+         <div class="main-content">
+            <div class="card">
+               <div class="card-header">
+                  <span class="card-title">${editLink ? '✏️ Editing Link' : '✨ Add New Link'}</span>
+                  ${editLink ? '<a href="/admin" class="btn-danger" style="text-decoration:none">Cancel</a>' : ''}
+               </div>
+               <form action="${editLink ? '/api/links/update' : '/api/links'}" method="post" class="form-grid">
+                  ${editLink ? `<input type="hidden" name="id" value="${editLink.id}">` : ''}
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px">
+                     <div class="form-group"><label class="label">Title</label><input class="input" name="title" value="${editLink?.title||''}" required></div>
+                     <div class="form-group"><label class="label">URL</label><input class="input" name="url" value="${editLink?.url||''}" required></div>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:15px">
+                     <div class="form-group"><label class="label">Sort</label><input class="input" name="sort_order" value="${editLink?.sort_order||0}"></div>
+                     <div class="form-group"><label class="label">Tag</label><input class="input" name="tag" value="${editLink?.tag||''}"></div>
+                     <div class="form-group"><label class="label">Icon (Emoji/URL)</label><input class="input" name="icon" value="${editLink?.icon||''}"></div>
+                  </div>
+                  <div class="form-group"><label class="label">Description</label><input class="input" name="description" value="${editLink?.description||''}"></div>
+                  <button class="btn btn-primary">${editLink ? 'Update Link' : 'Create Link'}</button>
+               </form>
+            </div>
+
+            <div class="card">
+               <div class="card-header"><span class="card-title">All Links (${links.results.length})</span></div>
+               <div class="link-list">
+                  ${links.results.map((l:any) => `
+                    <div class="link-row">
+                       <form action="/api/links/update_order" method="post" style="margin:0">
+                          <input type="hidden" name="id" value="${l.id}">
+                          <input class="sort-input" name="sort_order" value="${l.sort_order}" onchange="this.form.submit()">
+                       </form>
+                       <div class="icon-box">${!l.icon ? '🔗' : (l.icon.startsWith('http') ? `<img src="${l.icon}" style="width:100%;height:100%;object-fit:cover">` : l.icon)}</div>
+                       <div class="link-details">
+                          <div class="link-name">${l.title} ${l.tag ? `<span class="tag-badge">${l.tag}</span>` : ''}</div>
+                          <div class="link-url">${l.url}</div>
+                       </div>
+                       <div style="display:flex;gap:8px">
+                          <a href="/admin?edit_id=${l.id}" class="btn-edit">Edit</a>
+                          <form action="/api/links/delete" method="post" style="margin:0">
+                             <input type="hidden" name="id" value="${l.id}">
+                             <button class="btn-danger" style="border:none;cursor:pointer" onclick="return confirm('Delete?')">Del</button>
+                          </form>
+                       </div>
+                    </div>
+                  `).join('')}
+               </div>
+            </div>
+         </div>
+      </div>
+    </body>
+    </html>
+  `)
 })
 
 app.post('/api/login', async (c) => { const body=await c.req.parseBody(); if(body.password===(c.env.ADMIN_PASSWORD||'lx123456')){setCookie(c,'auth','true',{httpOnly:true,maxAge:86400*30,path:'/'});return c.redirect('/admin')}return c.html(`<script>alert('Error');history.back()</script>`) })
