@@ -1,9 +1,9 @@
 /**
- * LX Profile - V32.0 (Music Fix, Login UI Polish, Mobile Layout Fix)
- * 1. 修复：音乐播放器增加 Promise 错误处理和旋转动画，解决点击无反应。
- * 2. 美化：登录页面重构，使用后台同款极光深色 UI。
- * 3. 优化：手机端后台链接列表布局，防止标签与按钮重叠。
- * 4. 保持：SSR倒计时、秒级时钟、归属地、0依赖等所有特性不变。
+ * LX Profile - V33.0 (The Ultimate Restoration)
+ * 1. 后台：回滚至 V31 的防裁切布局 (手机端强制垂直排列，杜绝重叠)。
+ * 2. 登录：保留 V32 的极光美化界面。
+ * 3. 功能：集成 V31/V32 所有修复 (SSR倒计时、秒级时钟、定位、QQ修复、音乐优化)。
+ * 4. 核心：0 CDN，纯原生代码。
  */
 import { Hono } from 'hono'
 import { handle } from 'hono/cloudflare-pages'
@@ -16,7 +16,7 @@ async function getConfig(db: D1Database, key: string) {
   try { return await db.prepare("SELECT value FROM config WHERE key = ?").bind(key).first('value') } catch (e) { return null }
 }
 
-// ------ 前端 CSS (保持 V31 核心，增加音乐动画) ------
+// ------ 前端 CSS (V32 基础 + 暗黑修复) ------
 const frontCss = `
 :root { --bg:#f8fafc; --text:#0f172a; --sub:#64748b; --card:rgba(255,255,255,0.85); --border:rgba(255,255,255,0.6); --accent:#3b82f6; --shadow:0 8px 30px rgba(0,0,0,0.08); }
 html.dark { --bg:#020617; --text:#f8fafc; --sub:#94a3b8; --card:rgba(15,23,42,0.8); --border:rgba(255,255,255,0.08); --accent:#60a5fa; --shadow:0 10px 30px -5px rgba(0,0,0,0.6); }
@@ -33,7 +33,6 @@ html.dark .bg-layer{filter:brightness(0.3) saturate(0.8)}
 .controls{display:flex;gap:8px}
 .circle-btn{width:36px;height:36px;border-radius:50%;background:var(--card);border:1px solid var(--border);display:flex;justify-content:center;align-items:center;cursor:pointer;font-size:16px;transition:0.2s}
 .circle-btn:active{transform:scale(0.9)}
-/* 音乐旋转动画 */
 .spin{animation:spin 3s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .avatar-wrapper{position:relative;width:96px;height:96px;margin:0 auto 12px auto}
@@ -51,7 +50,7 @@ html.dark .bg-layer{filter:brightness(0.3) saturate(0.8)}
 .progress-container{background:rgba(127,127,127,0.08);padding:14px;border-radius:16px;margin-top:12px;border:1px solid var(--border)}
 .progress-labels{display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:8px;opacity:0.7}
 .progress-bg{width:100%;height:6px;background:rgba(127,127,127,0.1);border-radius:99px;overflow:hidden}
-.progress-bar{height:100%;background:var(--accent);border-radius:99px;transform-origin:left}
+.progress-bar{height:100%;background:var(--accent);border-radius:99px;transform-origin:left;will-change:transform}
 .search-box{width:100%;padding:14px;border-radius:16px;border:1px solid var(--border);background:var(--card);color:var(--text);margin-bottom:12px;outline:none;font-size:14px;transition:0.2s}
 .search-box:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,0.1)}
 .tags-scroll{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 10px 2px;justify-content:center;scrollbar-width:none}
@@ -78,50 +77,65 @@ html.dark .link-card:hover{background:rgba(60,60,60,0.9)}
 .marquee{white-space:nowrap;overflow:hidden;font-size:12px;font-weight:700;color:var(--accent);text-align:left}.marquee div{display:inline-block;padding-left:100%;animation:scroll 15s linear infinite}@keyframes scroll{to{transform:translateX(-100%)}}
 `;
 
-// ------ 后台 CSS (V32 修复布局与美化) ------
+// ------ 后台 CSS (V33 复原版：防裁切、防重叠) ------
 const adminCss = `
-:root { --bg:#0f172a; --card:#1e293b; --text:#e2e8f0; --sub:#94a3b8; --border:#334155; --accent:#3b82f6; --input:#020617; }
-body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; min-height: 100vh; font-size: 14px; }
+:root { --bg:#0f172a; --card:#1e293b; --text:#e2e8f0; --sub:#94a3b8; --border:#334155; --accent:#3b82f6; --input:#020617; --danger:#ef4444; }
+body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; min-height: 100vh; font-size: 14px; padding-bottom: 50px; }
 a { text-decoration: none; color: inherit; transition: 0.2s; }
-.nav { background: rgba(30,41,59,0.9); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); padding: 0 20px; height: 60px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; }
-.logo { font-weight: 800; font-size: 18px; color: #fff; letter-spacing: -0.5px; }
+
+/* 导航 */
+.nav { background: rgba(30,41,59,0.95); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); padding: 0 20px; height: 60px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 4px 10px rgba(0,0,0,0.2); margin-bottom: 30px; }
+.logo { font-weight: 800; font-size: 18px; color: #fff; }
 .logo span { color: var(--accent); }
-.preview-btn { background: rgba(59,130,246,0.1); color: var(--accent); padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 12px; border: 1px solid rgba(59,130,246,0.2); }
+.preview-btn { background: rgba(59,130,246,0.15); color: var(--accent); padding: 8px 16px; border-radius: 8px; font-weight: 700; font-size: 12px; border: 1px solid rgba(59,130,246,0.3); }
 .preview-btn:hover { background: var(--accent); color: #fff; }
-.container { max-width: 1100px; margin: 30px auto; padding: 0 20px; display: grid; grid-template-columns: 320px 1fr; gap: 24px; }
-@media (max-width: 800px) { .container { grid-template-columns: 1fr; } }
-.panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); }
-.panel-head { padding: 15px 20px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); font-weight: 700; color: var(--sub); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; justify-content: space-between; align-items: center; }
-.panel-body { padding: 20px; }
-.form-grid { display: grid; gap: 16px; }
-.field { display: flex; flex-direction: column; gap: 6px; }
-.label { font-size: 11px; font-weight: 700; color: var(--sub); text-transform: uppercase; }
-.input { background: var(--input); border: 1px solid var(--border); color: #fff; padding: 10px 12px; border-radius: 8px; font-size: 13px; transition: 0.2s; outline: none; width: 100%; box-sizing: border-box; }
-.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
-textarea.input { resize: vertical; min-height: 80px; line-height: 1.5; }
-select.input { appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 10px center; background-size: 14px; }
-.btn { width: 100%; padding: 12px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; border: none; transition: 0.2s; text-align: center; }
-.btn-primary { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; box-shadow: 0 4px 10px rgba(37,99,235,0.3); }
-.btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
-.btn-add { background: linear-gradient(135deg, #10b981, #059669); color: white; box-shadow: 0 4px 10px rgba(16,185,129,0.3); }
-.btn-add:hover { opacity: 0.9; transform: translateY(-1px); }
-.btn-danger { background: rgba(239,68,68,0.1); color: #ef4444; padding: 4px 10px; font-size: 11px; border-radius: 4px; }
+
+/* 布局：V33 优化版 */
+.layout { max-width: 1100px; margin: 0 auto; padding: 0 20px; display: flex; flex-direction: column; gap: 30px; }
+@media (min-width: 900px) { .layout { flex-direction: row; align-items: start; } .sidebar { width: 340px; flex-shrink: 0; } .main { flex-grow: 1; } }
+
+/* 卡片 */
+.panel { background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); display: flex; flex-direction: column; }
+.panel-head { padding: 18px 24px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.03); font-weight: 800; color: var(--sub); font-size: 13px; text-transform: uppercase; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; }
+.panel-body { padding: 24px; }
+
+/* 表单：手机端强制垂直排列，防止裁切 */
+.form-grid { display: flex; flex-direction: column; gap: 16px; }
+@media (min-width: 600px) { .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 16px; } }
+
+.field { display: flex; flex-direction: column; gap: 8px; width: 100%; min-width: 0; }
+.label { font-size: 11px; font-weight: 700; color: var(--sub); text-transform: uppercase; letter-spacing: 0.5px; }
+.input { width: 100%; background: var(--input); border: 1px solid var(--border); color: #fff; padding: 12px 14px; border-radius: 8px; font-size: 14px; outline: none; transition: 0.2s; box-sizing: border-box; }
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.15); background: #020617; }
+textarea.input { resize: vertical; min-height: 80px; line-height: 1.6; }
+select.input { appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 12px center; background-size: 16px; }
+
+/* 按钮 */
+.btn { width: 100%; padding: 14px; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; border: none; transition: 0.2s; text-align: center; display: inline-block; box-sizing: border-box; }
+.btn-primary { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; box-shadow: 0 4px 12px rgba(37,99,235,0.3); }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 15px rgba(37,99,235,0.4); }
+.btn-add { background: linear-gradient(135deg, #10b981, #059669); color: white; box-shadow: 0 4px 12px rgba(16,185,129,0.3); }
+.btn-danger { background: rgba(239,68,68,0.15); color: #ef4444; padding: 6px 12px; font-size: 12px; border-radius: 6px; width: auto; font-weight: 600; }
 .btn-danger:hover { background: #ef4444; color: #fff; }
-.btn-edit { background: rgba(59,130,246,0.1); color: var(--accent); padding: 4px 10px; font-size: 11px; border-radius: 4px; }
+.btn-edit { background: rgba(59,130,246,0.15); color: var(--accent); padding: 6px 12px; font-size: 12px; border-radius: 6px; width: auto; font-weight: 600; }
 .btn-edit:hover { background: var(--accent); color: #fff; }
-.link-list { display: flex; flex-direction: column; gap: 4px; }
-.link-item { display: flex; align-items: center; gap: 12px; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid transparent; transition: 0.2s; }
+
+/* 链接列表：防重叠设计 */
+.link-list { display: flex; flex-direction: column; gap: 8px; }
+.link-item { display: flex; align-items: center; gap: 16px; padding: 16px; background: rgba(255,255,255,0.02); border-radius: 12px; border: 1px solid transparent; transition: 0.2s; flex-wrap: wrap; }
 .link-item:hover { background: rgba(255,255,255,0.04); border-color: var(--border); }
-.link-sort { width: 32px; text-align: center; background: var(--input); border: 1px solid var(--border); color: var(--sub); padding: 4px; border-radius: 4px; font-size: 11px; }
-.link-icon { width: 36px; height: 36px; background: var(--input); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 18px; border: 1px solid var(--border); color: var(--sub); overflow: hidden; flex-shrink: 0; }
-.link-info { flex: 1; min-width: 0; margin-right: 8px; } /* 修复重叠：增加右边距 */
-.link-title { font-weight: 700; font-size: 13px; color: #fff; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.link-tag { font-size: 9px; background: rgba(59,130,246,0.2); color: var(--accent); padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
-.link-url { font-size: 11px; color: var(--sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.actions { display: flex; gap: 6px; flex-shrink: 0; } /* 修复重叠：禁止压缩 */
+.link-sort { width: 44px; text-align: center; background: var(--input); border: 1px solid var(--border); color: var(--sub); padding: 8px; border-radius: 8px; font-size: 12px; }
+.link-icon { width: 44px; height: 44px; background: var(--input); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; border: 1px solid var(--border); color: var(--sub); overflow: hidden; flex-shrink: 0; }
+.link-details { flex: 1; min-width: 150px; /* 防止过窄 */ margin-right: 8px; }
+.link-title { font-weight: 700; font-size: 14px; color: #fff; display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+.link-url { font-size: 12px; color: var(--sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+.tag-badge { font-size: 10px; background: rgba(59,130,246,0.2); color: var(--accent); padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+.item-actions { display: flex; gap: 10px; flex-shrink: 0; margin-left: auto; } /* 靠右对齐 */
+
+/* 登录页 (复用 V32 美化版) */
 .login-wrapper { display: flex; align-items: center; justify-content: center; height: 100vh; background: var(--bg); background-image: radial-gradient(circle at 50% 0%, #1e293b 0%, #0f172a 70%); }
-.login-box { width: 100%; max-width: 360px; padding: 40px; background: rgba(30,41,59,0.6); backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 20px; text-align: center; box-shadow: 0 20px 40px -10px rgba(0,0,0,0.5); }
-.login-icon { font-size: 40px; margin-bottom: 20px; display: inline-block; background: rgba(59,130,246,0.1); width: 80px; height: 80px; line-height: 80px; border-radius: 50%; box-shadow: 0 0 20px rgba(59,130,246,0.2); }
+.login-box { width: 100%; max-width: 360px; padding: 40px; background: rgba(30,41,59,0.7); backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 24px; text-align: center; box-shadow: 0 20px 50px -10px rgba(0,0,0,0.5); }
+.login-icon { font-size: 48px; margin-bottom: 24px; display: inline-flex; align-items: center; justify-content: center; background: rgba(59,130,246,0.1); width: 90px; height: 90px; border-radius: 50%; box-shadow: 0 0 30px rgba(59,130,246,0.2); }
 `;
 
 app.get('/', async (c) => {
@@ -140,7 +154,7 @@ app.get('/', async (c) => {
   const stColor:any = { online:'#22c55e', busy:'#ef4444', coding:'#a855f7', away:'#eab308', offline:'#6b7280' };
   const curStColor = stColor[status as string] || '#22c55e';
 
-  // SSR 倒计时
+  // SSR 计算
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
   const yr = now.getFullYear();
   const start = new Date(Date.UTC(yr, 0, 1)).getTime();
@@ -182,7 +196,7 @@ app.get('/avatar', async (c) => {
 
 app.get('/admin', async (c) => {
   const cookie = getCookie(c, 'auth')
-  if (cookie !== 'true') return c.html(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>后台登录</title><style>${adminCss}</style></head><body><div class="login-wrapper"><div class="login-box"><div class="login-icon">🔐</div><h2 style="margin:0 0 20px 0;color:#fff">后台管理</h2><form action="/api/login" method="post"><div class="form-group"><input type="password" name="password" class="input" placeholder="输入密码" style="text-align:center"></div><button class="btn btn-primary" style="margin-top:20px">立即解锁</button></form></div></div></body></html>`)
+  if (cookie !== 'true') return c.html(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>后台登录</title><style>${adminCss}</style></head><body><div class="login-wrapper"><div class="login-box"><div class="login-icon">🔐</div><h2 style="margin:0 0 20px 0;color:#fff">后台管理</h2><form action="/api/login" method="post"><div class="field"><input type="password" name="password" class="input" placeholder="输入密码" style="text-align:center"></div><button class="btn btn-primary" style="margin-top:20px">立即解锁</button></form></div></div></body></html>`)
   
   const editId = c.req.query('edit_id')
   let editLink = null
@@ -197,13 +211,13 @@ app.get('/admin', async (c) => {
 
   return c.html(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>后台管理</title><style>${adminCss}</style></head><body>
     <nav class="nav"><div class="logo">LX <span>Profile</span></div><a href="/" target="_blank" class="preview-btn">预览主页</a></nav>
-    <div class="container">
+    <div class="layout">
       <div class="sidebar">
         <div class="panel">
           <div class="panel-head">系统配置</div>
           <div class="panel-body"><form action="/api/config" method="post" class="form-grid">
             ${Object.keys(config).map(k=> k === 'status' ? `
-              <div class="form-group"><label class="label">${labelMap[k]}</label>
+              <div class="field"><label class="label">${labelMap[k]}</label>
               <select name="${k}" class="input">
                 <option value="online" ${config[k]==='online'?'selected':''}>🟢 在线 (Online)</option>
                 <option value="busy" ${config[k]==='busy'?'selected':''}>🔴 忙碌 (Busy)</option>
@@ -212,7 +226,7 @@ app.get('/admin', async (c) => {
                 <option value="offline" ${config[k]==='offline'?'selected':''}>⚫ 隐身 (Offline)</option>
               </select></div>
             ` : `
-              <div class="form-group"><label class="label">${labelMap[k]||k}</label>
+              <div class="field"><label class="label">${labelMap[k]||k}</label>
               ${k==='bio'||k==='notice'?`<textarea name="${k}" class="input">${config[k]}</textarea>`:`<input type="text" name="${k}" value="${config[k]}" class="input">`}
               </div>`).join('')}
             <button class="btn btn-primary">保存配置</button>
@@ -224,9 +238,9 @@ app.get('/admin', async (c) => {
           <div class="panel-head"><span>${editLink?'✏️ 编辑链接':'✨ 添加链接'}</span>${editLink?'<a href="/admin" class="btn-danger" style="text-decoration:none">取消</a>':''}</div>
           <div class="panel-body"><form action="${editLink?'/api/links/update':'/api/links'}" method="post" class="form-grid">
             ${editLink?`<input type="hidden" name="id" value="${editLink.id}">`:''}
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px"><div class="form-group"><label class="label">标题</label><input name="title" value="${editLink?.title||''}" class="input" required></div><div class="form-group"><label class="label">链接</label><input name="url" value="${editLink?.url||''}" class="input" required></div></div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:15px"><div class="form-group"><label class="label">排序</label><input name="sort_order" value="${editLink?.sort_order||0}" class="input"></div><div class="form-group"><label class="label">标签</label><input name="tag" value="${editLink?.tag||''}" class="input"></div><div class="form-group"><label class="label">图标</label><input name="icon" value="${editLink?.icon||''}" class="input" placeholder="Emoji 或 URL"></div></div>
-            <div class="form-group"><label class="label">描述</label><input name="description" value="${editLink?.description||''}" class="input"></div>
+            <div class="form-row"><div class="field"><label class="label">标题</label><input name="title" value="${editLink?.title||''}" class="input" required></div><div class="field"><label class="label">链接</label><input name="url" value="${editLink?.url||''}" class="input" required></div></div>
+            <div class="form-row-3"><div class="field"><label class="label">排序</label><input name="sort_order" value="${editLink?.sort_order||0}" class="input"></div><div class="field"><label class="label">标签</label><input name="tag" value="${editLink?.tag||''}" class="input"></div><div class="field"><label class="label">图标</label><input name="icon" value="${editLink?.icon||''}" class="input" placeholder="Emoji 或 URL"></div></div>
+            <div class="field"><label class="label">描述</label><input name="description" value="${editLink?.description||''}" class="input"></div>
             <button class="${editLink?'btn btn-primary':'btn btn-add'}" style="${!editLink?'background:#10b981':''}">${editLink?'更新链接':'立即添加'}</button>
           </form></div>
         </div>
@@ -236,8 +250,8 @@ app.get('/admin', async (c) => {
             ${links.results.map((l:any)=>`<div class="link-item">
               <form action="/api/links/update_order" method="post" style="margin:0"><input type="hidden" name="id" value="${l.id}"><input class="link-sort" name="sort_order" value="${l.sort_order}" onchange="this.form.submit()"></form>
               <div class="link-icon">${!l.icon?'🔗':(l.icon.startsWith('http')?`<img src="${l.icon}" style="width:100%;height:100%;object-fit:cover">`:l.icon)}</div>
-              <div class="link-info"><div class="link-title">${l.title} ${l.tag?`<span class="tag-badge">${l.tag}</span>`:''}</div><div class="link-url">${l.url}</div></div>
-              <div class="actions"><a href="/admin?edit_id=${l.id}" class="btn-edit">编辑</a><form action="/api/links/delete" method="post" style="margin:0"><input type="hidden" name="id" value="${l.id}"><button class="btn-danger" style="border:none;cursor:pointer" onclick="return confirm('删?')">删除</button></form></div>
+              <div class="link-details"><div class="link-title">${l.title} ${l.tag?`<span class="tag-badge">${l.tag}</span>`:''}</div><div class="link-url">${l.url}</div></div>
+              <div class="item-actions"><a href="/admin?edit_id=${l.id}" class="btn-edit">编辑</a><form action="/api/links/delete" method="post" style="margin:0"><input type="hidden" name="id" value="${l.id}"><button class="btn-danger" style="border:none;cursor:pointer" onclick="return confirm('删?')">删除</button></form></div>
             </div>`).join('')}
           </div>
         </div>
